@@ -617,7 +617,7 @@ def main():
 	if (len(sys.argv) < 2):
 		parse_packet(attitude)
 	else:
-		for x in argv[1:]:
+		for x in sys.argv[1:]:
 			packets = find_packets(x)
 			for packet in packets:
 				parse_packet(packet)	
