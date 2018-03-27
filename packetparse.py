@@ -538,15 +538,15 @@ def parse_low_power_data(ps):
 
 def getErrorStartByte(message_type):
 	if (message_type == 'IDLE'):
-		return 190
+		return 190*2
 	elif (message_type == 'ATTITUDE'):
-		return 194
+		return 194*2
 	elif (message_type == 'FLASH_BURST'):
-		return 180
+		return 180*2
 	elif (message_type == 'FLASH_CMP'):
-		return 179
+		return 179*2
 	elif (message_type == 'LOW_POWER'):
-		return 179
+		return 179*2
 
 def parse_errors(ps, num_errors, message_type):
 	errors = []
