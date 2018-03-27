@@ -4,170 +4,7 @@ import json
 import re
 import sys
 
-DATA_SECTION_START_BYTE =		58
-IDLE_BATCHES_PER_PACKET	=		7
-ATTITUDE_BATCHES_PER_PACKET	=	5
-FLASHBURST_BATCHES_PER_PACKET =	7
-FLASHCMP_BATCHES_PER_PACKET	=	6
-LOWPOWER_BATCHES_PER_PACKET	=	5
-
-A_TEMP_M =					(65/2)
-A_TEMP_B =					0
-A_LED_SNS_M =				650
-A_LED_SNS_B =				0
-A_LF_SNS_M =				(316/7)
-A_LF_SNS_B =				-960
-A_LF_OSNS_M =				(650/9)
-A_LF_OSNS_B =				0
-A_LF_VOLT_M =				(130/9)
-A_LF_VOLT_B =				0
-A_L_SNS_M =					20
-A_L_SNS_B =					150
-A_L_VOLT_M =				(130/9)
-A_L_VOLT_B =				0
-A_LREF_M =					(130/9)
-A_LREF_B =					0
-A_PANELREF_M =				(13/2)
-A_PANELREF_B =				0
-A_IR_AMB_M =				(63/8)
-A_IR_AMB_B =				-11657
-A_GYRO_M =					1
-A_GYRO_B =					32750
-A_ACCEL_M =					1
-A_ACCEL_B =					32768
-A_MAG_M =					(58/5)
-A_MAG_B =					2800
-A_RAD_TEMP_M =				(65/4)
-A_RAD_TEMP_B =				2000
-A_IMU_TEMP_M =				(14/9)
-A_IMU_TEMP_B =				20374
-
-class Signals:
-	S_IR_OBJ, S_IR_AMB, S_PD, S_LED_TEMP_REG, S_LED_TEMP_FLASH, S_LED_SNS, S_LED_SNS_REG, S_LED_SNS_FLASH, S_LED_SNS_FLASH_BATCH, S_LF_TEMP, S_LF_SNS_REG, S_LF_SNS_FLASH, S_LF_SNS_FLASH_BATCH, S_LF_OSNS_REG, S_LF_OSNS_FLASH, S_LF_OSNS_FLASH_BATCH, S_LF_VOLT, S_L_TEMP, S_L_SNS, S_L_SNS_OFF, S_L_SNS_IDLE_RAD_OFF, S_L_SNS_IDLE_RAD_ON, S_L_SNS_TRANSMIT, S_L_SNS_IDLE_TRANS_TRANSITION, S_L_SNS_OFF_IDLE_TRANSITION, S_L_SNS_ANT_DEPLOY, S_L_VOLT, S_LREF, S_PANELREF, S_GYRO, S_ACCEL, S_MAG, S_RAD_TEMP, S_IMU_TEMP, S_3V3_REF, S_3V6_REF_OFF, S_3V6_REF_ON, S_3V6_SNS_OFF, S_3V6_SNS_ON, S_3V6_SNS_TRANSMIT, S_3V6_SNS_OFF_IDLE_TRANSITION, S_3V6_SNS_IDLE_TRANS_TRANSITION, S_5VREF_ON, S_5VREF_OFF, S_5VREF_TRANSITION = range(45)
-
-def get_line_m_from_signal(sig):
-	return {
-		Signals.S_IR_AMB:
-			A_IR_AMB_M,
-		Signals.S_LED_TEMP_REG:
-			A_TEMP_M,
-		Signals.S_LED_TEMP_FLASH:
-			A_TEMP_M,
-		Signals.S_LED_SNS:
-			A_LED_SNS_M,
-		Signals.S_LED_SNS_REG:
-			A_LED_SNS_M,
-		Signals.S_LED_SNS_FLASH:
-			A_LED_SNS_M,
-		Signals.S_LED_SNS_FLASH_BATCH:
-			A_LED_SNS_M,
-		Signals.S_L_TEMP:
-			A_TEMP_M,
-		Signals.S_LF_TEMP:
-			A_TEMP_M,
-		Signals.S_LF_SNS_REG:
-			A_LF_SNS_M,
-		Signals.S_LF_SNS_FLASH:
-			A_LF_SNS_M,
-		Signals.S_LF_SNS_FLASH_BATCH:
-			A_LF_SNS_M,
-		Signals.S_L_SNS:
-			A_L_SNS_M,
-		Signals.S_L_SNS_IDLE_RAD_OFF:
-			A_L_SNS_M,
-		Signals.S_L_SNS_IDLE_RAD_ON:
-			A_L_SNS_M,
-		Signals.S_L_SNS_TRANSMIT:
-			A_L_SNS_M,
-		Signals.S_L_SNS_ANT_DEPLOY:
-			A_L_SNS_M,
-		Signals.S_LF_VOLT:
-			A_LF_VOLT_M,
-		Signals.S_LF_OSNS_FLASH:
-			A_LF_OSNS_M,
-		Signals.S_LF_OSNS_FLASH_BATCH:
-			A_LF_OSNS_M,
-		Signals.S_LF_OSNS_REG:
-			A_LF_OSNS_M,
-		Signals.S_L_VOLT:
-			A_L_VOLT_M,
-		Signals.S_LREF:
-			A_LREF_M,
-		Signals.S_PANELREF:
-			A_PANELREF_M,
-		Signals.S_GYRO:
-			A_GYRO_M,
-		Signals.S_ACCEL:
-			A_ACCEL_M,
-		Signals.S_MAG:
-			A_MAG_M,
-		Signals.S_RAD_TEMP:
-			A_RAD_TEMP_M,
-		Signals.S_IMU_TEMP:
-			A_IMU_TEMP_M,
-	}[sig]
-
-def get_line_b_from_signal(sig):
-	return {
-		Signals.S_IR_AMB:
-			A_IR_AMB_B,
-		Signals.S_LED_TEMP_REG:
-			A_TEMP_B,
-		Signals.S_LED_TEMP_FLASH:
-			A_TEMP_B,
-		Signals.S_LED_SNS:
-			A_LED_SNS_B,
-		Signals.S_LED_SNS_REG:
-			A_LED_SNS_B,
-		Signals.S_LED_SNS_FLASH:
-			A_LED_SNS_B,
-		Signals.S_LED_SNS_FLASH_BATCH:
-			A_LED_SNS_B,
-		Signals.S_L_TEMP:
-			A_TEMP_B,
-		Signals.S_LF_TEMP:
-			A_TEMP_B,
-		Signals.S_LF_SNS_REG:
-			A_LF_SNS_B,
-		Signals.S_LF_SNS_FLASH:
-			A_LF_SNS_B,
-		Signals.S_LF_SNS_FLASH_BATCH:
-			A_LF_SNS_B,
-		Signals.S_L_SNS:
-			A_L_SNS_B,
-		Signals.S_L_SNS_IDLE_RAD_OFF:
-			A_L_SNS_B,
-		Signals.S_L_SNS_IDLE_RAD_ON:
-			A_L_SNS_B,
-		Signals.S_L_SNS_TRANSMIT:
-			A_L_SNS_B,
-		Signals.S_L_SNS_ANT_DEPLOY:
-			A_L_SNS_B,
-		Signals.S_LF_VOLT:
-			A_LF_VOLT_B,
-		Signals.S_LF_OSNS_FLASH:
-			A_LF_OSNS_B,
-		Signals.S_LF_OSNS_FLASH_BATCH:
-			A_LF_OSNS_B,
-		Signals.S_LF_OSNS_REG:
-			A_LF_OSNS_B,
-		Signals.S_L_VOLT:
-			A_L_VOLT_B,
-		Signals.S_LREF:
-			A_LREF_B,
-		Signals.S_PANELREF:
-			A_PANELREF_B,
-		Signals.S_GYRO:
-			A_GYRO_B,
-		Signals.S_ACCEL:
-			A_ACCEL_B,
-		Signals.S_MAG:
-			A_MAG_B,
-		Signals.S_RAD_TEMP:
-			A_RAD_TEMP_B,
-		Signals.S_IMU_TEMP:
-			A_IMU_TEMP_B,
-	}[sig]
+from constants import *
 
 def untruncate(val, sig):
 	u16 = (val) << 8;
@@ -194,6 +31,19 @@ def gyro_raw_to_dps(raw):
 
 def ir_raw_to_C(raw):
 	return round(raw*.02 - 273.15, 2)
+def ad590_mV_to_C(mV):
+	return round((mV * 0.1286) - 107.405, 0)
+
+def l_sns_mV_to_mA(mV):
+	return round((mV - 985) * 2, 0)
+
+def lfbsns_mV_to_mA(mV):
+	return round((mV - 980) * 50, 0)
+def lfbosns_mV_to_mA(mV):
+	return round(mV * 71.43, 0)
+def led_sns_mV_to_mA(mV):
+	return round(mV / .03, 0)
+
 
 def get_sat_state(val):	
 	return {
@@ -235,10 +85,10 @@ def parse_current_info(ps):
 	current_info['boot_count'] = int(ps[28:30], 16)
 	current_info['L1_REF'] = untruncate(int(ps[30:32], 16), Signals.S_LREF)
 	current_info['L2_REF'] = untruncate(int(ps[32:34], 16), Signals.S_LREF)
-	current_info['L1_SNS'] = untruncate(hex_string_byte_to_signed_int(ps[34:36]), Signals.S_L_SNS)
-	current_info['L2_SNS'] = untruncate(hex_string_byte_to_signed_int(ps[36:38]), Signals.S_L_SNS)
-	current_info['L1_TEMP'] = untruncate(hex_string_byte_to_signed_int(ps[38:40]), Signals.S_L_TEMP)
-	current_info['L2_TEMP'] = untruncate(hex_string_byte_to_signed_int(ps[40:42]), Signals.S_L_TEMP)
+	current_info['L1_SNS'] = l_sns_mV_to_mA(untruncate(hex_string_byte_to_signed_int(ps[34:36]), Signals.S_L_SNS))
+	current_info['L2_SNS'] = l_sns_mV_to_mA(untruncate(hex_string_byte_to_signed_int(ps[36:38]), Signals.S_L_SNS))
+	current_info['L1_TEMP'] = ad590_mV_to_C(untruncate(hex_string_byte_to_signed_int(ps[38:40]), Signals.S_L_TEMP))
+	current_info['L2_TEMP'] = ad590_mV_to_C(untruncate(hex_string_byte_to_signed_int(ps[40:42]), Signals.S_L_TEMP))
 	current_info['PANELREF'] = (untruncate(int(ps[42:44], 16), Signals.S_PANELREF)-130)*5580/1000
 	current_info['L_REF'] = (untruncate(int(ps[44:46], 16), Signals.S_LREF)-50)*2717/1000
 	
@@ -344,10 +194,10 @@ def parse_idle_data(ps):
 
 		cur['L1_REF'] = untruncate(int(ps[start+2:start+4], 16), Signals.S_LREF)
 		cur['L2_REF'] = untruncate(int(ps[start+4:start+6], 16), Signals.S_LREF)
-		cur['L1_SNS'] = untruncate(hex_string_byte_to_signed_int(ps[start+6:start+8]), Signals.S_L_SNS)
-		cur['L2_SNS'] = untruncate(hex_string_byte_to_signed_int(ps[start+8:start+10]), Signals.S_L_SNS)
-		cur['L1_TEMP'] = untruncate(hex_string_byte_to_signed_int(ps[start+10:start+12]), Signals.S_L_TEMP)
-		cur['L2_TEMP'] = untruncate(hex_string_byte_to_signed_int(ps[start+12:start+14]), Signals.S_L_TEMP)
+		cur['L1_SNS'] = l_sns_mV_to_mA(untruncate(hex_string_byte_to_signed_int(ps[start+6:start+8]), Signals.S_L_SNS))
+		cur['L2_SNS'] = l_sns_mV_to_mA(untruncate(hex_string_byte_to_signed_int(ps[start+8:start+10]), Signals.S_L_SNS))
+		cur['L1_TEMP'] = ad590_mV_to_C(untruncate(hex_string_byte_to_signed_int(ps[start+10:start+12]), Signals.S_L_TEMP))
+		cur['L2_TEMP'] = ad590_mV_to_C(untruncate(hex_string_byte_to_signed_int(ps[start+12:start+14]), Signals.S_L_TEMP))
 		cur['PANELREF'] = (untruncate(int(ps[start+14:start+16], 16), Signals.S_PANELREF)-130)*5580/1000
 		cur['L_REF'] = (untruncate(int(ps[start+16:start+18], 16), Signals.S_LREF)-50)*2717/1000
 
@@ -372,7 +222,7 @@ def parse_idle_data(ps):
 		cur['L2_CHGN'] = str(get_bit(bat_digsigs_2, 2))
 		cur['L2_FAULTN'] = str(get_bit(bat_digsigs_2, 1))
 
-		cur['RAD_TEMP'] = untruncate(int(ps[start+22:start+24], 16), Signals.S_RAD_TEMP)
+		cur['RAD_TEMP'] = untruncate(int(ps[start+22:start+24], 16), Signals.S_RAD_TEMP)/10
 		cur['IMU_TEMP'] = untruncate(int(ps[start+24:start+26], 16), Signals.S_IMU_TEMP)
 
 		cur['IR_FLASH_AMB'] = ir_raw_to_C(untruncate(int(ps[start+26:start+28], 16), Signals.S_IR_AMB))
@@ -393,22 +243,22 @@ def parse_flash_burst_data(ps):
 	burst = [dict() for x in range(FLASHBURST_BATCHES_PER_PACKET)]
 	start = DATA_SECTION_START_BYTE			
 	for i in range(0, FLASHBURST_BATCHES_PER_PACKET):
-		burst[i]['LED1TEMP'] = untruncate(hex_string_byte_to_signed_int(ps[start:start+2]), Signals.S_LED_TEMP_FLASH)
-		burst[i]['LED2TEMP'] = untruncate(hex_string_byte_to_signed_int(ps[start+2:start+4]), Signals.S_LED_TEMP_FLASH)
-		burst[i]['LED3TEMP'] = untruncate(hex_string_byte_to_signed_int(ps[start+4:start+6]), Signals.S_LED_TEMP_FLASH)
-		burst[i]['LED4TEMP'] = untruncate(hex_string_byte_to_signed_int(ps[start+6:start+8]), Signals.S_LED_TEMP_FLASH)
+		burst[i]['LED1TEMP'] = ad590_mV_to_C(untruncate(hex_string_byte_to_signed_int(ps[start:start+2]), Signals.S_LED_TEMP_FLASH))
+		burst[i]['LED2TEMP'] = ad590_mV_to_C(untruncate(hex_string_byte_to_signed_int(ps[start+2:start+4]), Signals.S_LED_TEMP_FLASH))
+		burst[i]['LED3TEMP'] = ad590_mV_to_C(untruncate(hex_string_byte_to_signed_int(ps[start+4:start+6]), Signals.S_LED_TEMP_FLASH))
+		burst[i]['LED4TEMP'] = ad590_mV_to_C(untruncate(hex_string_byte_to_signed_int(ps[start+6:start+8]), Signals.S_LED_TEMP_FLASH))
 		start += 8
 		
 	for i in range(0, FLASHBURST_BATCHES_PER_PACKET):		
-		burst[i]['LF1_TEMP'] = untruncate(hex_string_byte_to_signed_int(ps[start:start+2]), Signals.S_LF_TEMP)
-		burst[i]['LF3_TEMP'] = untruncate(hex_string_byte_to_signed_int(ps[start+2:start+4]), Signals.S_LF_TEMP)
+		burst[i]['LF1_TEMP'] = ad590_mV_to_C(untruncate(hex_string_byte_to_signed_int(ps[start:start+2]), Signals.S_LF_TEMP))
+		burst[i]['LF3_TEMP'] = ad590_mV_to_C(untruncate(hex_string_byte_to_signed_int(ps[start+2:start+4]), Signals.S_LF_TEMP))
 		start += 4
 		
 	for i in range(0, FLASHBURST_BATCHES_PER_PACKET):
-		burst[i]['LFB1SNS'] = untruncate(hex_string_byte_to_signed_int(ps[start:start+2]), Signals.S_LF_SNS_FLASH)
-		burst[i]['LFB1OSNS'] = untruncate(hex_string_byte_to_signed_int(ps[start+2:start+4]), Signals.S_LF_OSNS_FLASH)
-		burst[i]['LFB2SNS'] = untruncate(hex_string_byte_to_signed_int(ps[start+4:start+6]), Signals.S_LF_SNS_FLASH)
-		burst[i]['LFB2OSNS'] = untruncate(hex_string_byte_to_signed_int(ps[start+6:start+8]), Signals.S_LF_OSNS_FLASH)
+		burst[i]['LFB1SNS'] = lfbsns_mV_to_mA(untruncate(hex_string_byte_to_signed_int(ps[start:start+2]), Signals.S_LF_SNS_FLASH))
+		burst[i]['LFB1OSNS'] = lfbosns_mV_to_mA(untruncate(hex_string_byte_to_signed_int(ps[start+2:start+4]), Signals.S_LF_OSNS_FLASH))
+		burst[i]['LFB2SNS'] = lfbsns_mV_to_mA(untruncate(hex_string_byte_to_signed_int(ps[start+4:start+6]), Signals.S_LF_SNS_FLASH))
+		burst[i]['LFB2OSNS'] = lfbosns_mV_to_mA(untruncate(hex_string_byte_to_signed_int(ps[start+6:start+8]), Signals.S_LF_OSNS_FLASH))
 		start += 8
 
 	for i in range(0, FLASHBURST_BATCHES_PER_PACKET):
@@ -419,10 +269,10 @@ def parse_flash_burst_data(ps):
 		start += 8
 
 	for i in range(0, FLASHBURST_BATCHES_PER_PACKET):		
-		burst[i]['LED1SNS'] = untruncate(hex_string_byte_to_signed_int(ps[start:start+2]), Signals.S_LED_SNS)
-		burst[i]['LED2SNS'] = untruncate(hex_string_byte_to_signed_int(ps[start+2:start+4]), Signals.S_LED_SNS)
-		burst[i]['LED3SNS'] = untruncate(hex_string_byte_to_signed_int(ps[start+4:start+6]), Signals.S_LED_SNS)
-		burst[i]['LED4SNS'] = untruncate(hex_string_byte_to_signed_int(ps[start+6:start+8]), Signals.S_LED_SNS)
+		burst[i]['LED1SNS'] = led_sns_mV_to_mA(untruncate(hex_string_byte_to_signed_int(ps[start:start+2]), Signals.S_LED_SNS))
+		burst[i]['LED2SNS'] = led_sns_mV_to_mA(untruncate(hex_string_byte_to_signed_int(ps[start+2:start+4]), Signals.S_LED_SNS))
+		burst[i]['LED3SNS'] = led_sns_mV_to_mA(untruncate(hex_string_byte_to_signed_int(ps[start+4:start+6]), Signals.S_LED_SNS))
+		burst[i]['LED4SNS'] = led_sns_mV_to_mA(untruncate(hex_string_byte_to_signed_int(ps[start+6:start+8]), Signals.S_LED_SNS))
 		start += 8
 
 	for i in range(0, FLASHBURST_BATCHES_PER_PACKET):
@@ -441,27 +291,27 @@ def parse_flash_cmp_data(ps):
 	start = DATA_SECTION_START_BYTE
 	for i in range(0, FLASHCMP_BATCHES_PER_PACKET):
 		cur = {}
-		cur['LED1TEMP'] = untruncate(hex_string_byte_to_signed_int(ps[start:start+2]), Signals.S_LED_TEMP_FLASH)
-		cur['LED2TEMP'] = untruncate(hex_string_byte_to_signed_int(ps[start+2:start+4]), Signals.S_LED_TEMP_FLASH)
-		cur['LED3TEMP'] = untruncate(hex_string_byte_to_signed_int(ps[start+4:start+6]), Signals.S_LED_TEMP_FLASH)
-		cur['LED4TEMP'] = untruncate(hex_string_byte_to_signed_int(ps[start+6:start+8]), Signals.S_LED_TEMP_FLASH)
-		cur['LF1_TEMP'] = untruncate(hex_string_byte_to_signed_int(ps[start+8:start+10]), Signals.S_LF_TEMP)
-		cur['LF3_TEMP'] = untruncate(hex_string_byte_to_signed_int(ps[start+10:start+12]), Signals.S_LF_TEMP)
-		cur['LFB1SNS'] = untruncate(hex_string_byte_to_signed_int(ps[start+12:start+14]), Signals.S_LF_SNS_FLASH)
+		cur['LED1TEMP'] = ad590_mV_to_C(untruncate(hex_string_byte_to_signed_int(ps[start:start+2]), Signals.S_LED_TEMP_FLASH))
+		cur['LED2TEMP'] = ad590_mV_to_C(untruncate(hex_string_byte_to_signed_int(ps[start+2:start+4]), Signals.S_LED_TEMP_FLASH))
+		cur['LED3TEMP'] = ad590_mV_to_C(untruncate(hex_string_byte_to_signed_int(ps[start+4:start+6]), Signals.S_LED_TEMP_FLASH))
+		cur['LED4TEMP'] = ad590_mV_to_C(untruncate(hex_string_byte_to_signed_int(ps[start+6:start+8]), Signals.S_LED_TEMP_FLASH))
+		cur['LF1_TEMP'] = ad590_mV_to_C(untruncate(hex_string_byte_to_signed_int(ps[start+8:start+10]), Signals.S_LF_TEMP))
+		cur['LF3_TEMP'] = ad590_mV_to_C(untruncate(hex_string_byte_to_signed_int(ps[start+10:start+12]), Signals.S_LF_TEMP))
 		
-		cur['LFB1OSNS'] = untruncate(hex_string_byte_to_signed_int(ps[start+14:start+16]), Signals.S_LF_OSNS_FLASH)
-		cur['LFB2SNS'] = untruncate(hex_string_byte_to_signed_int(ps[start+16:start+18]), Signals.S_LF_SNS_FLASH)
-		cur['LFB2OSNS'] = untruncate(hex_string_byte_to_signed_int(ps[start+18:start+20]), Signals.S_LF_OSNS_FLASH)
+		cur['LFB1SNS'] = lfbsns_mV_to_mA(untruncate(hex_string_byte_to_signed_int(ps[start+12:start+14]), Signals.S_LF_SNS_FLASH))
+		cur['LFB1OSNS'] = lfbosns_mV_to_mA(untruncate(hex_string_byte_to_signed_int(ps[start+14:start+16]), Signals.S_LF_OSNS_FLASH))
+		cur['LFB2SNS'] = lfbsns_mV_to_mA(untruncate(hex_string_byte_to_signed_int(ps[start+16:start+18]), Signals.S_LF_SNS_FLASH))
+		cur['LFB2OSNS'] = lfbosns_mV_to_mA(untruncate(hex_string_byte_to_signed_int(ps[start+18:start+20]), Signals.S_LF_OSNS_FLASH))
 
 		cur['LF1REF'] = untruncate(hex_string_byte_to_signed_int(ps[start+20:start+22]), Signals.S_LF_VOLT)
 		cur['LF2REF'] = untruncate(hex_string_byte_to_signed_int(ps[start+22:start+24]), Signals.S_LF_VOLT)
 		cur['LF3REF'] = untruncate(hex_string_byte_to_signed_int(ps[start+24:start+26]), Signals.S_LF_VOLT)
 		cur['LF4REF'] = untruncate(hex_string_byte_to_signed_int(ps[start+26:start+28]), Signals.S_LF_VOLT)
 
-		cur['LED1SNS'] = untruncate(hex_string_byte_to_signed_int(ps[start+28:start+30]), Signals.S_LED_SNS)
-		cur['LED2SNS'] = untruncate(hex_string_byte_to_signed_int(ps[start+30:start+32]), Signals.S_LED_SNS)
-		cur['LED3SNS'] = untruncate(hex_string_byte_to_signed_int(ps[start+32:start+34]), Signals.S_LED_SNS)
-		cur['LED4SNS'] = untruncate(hex_string_byte_to_signed_int(ps[start+34:start+36]), Signals.S_LED_SNS)
+		cur['LED1SNS'] = led_sns_mV_to_mA(untruncate(hex_string_byte_to_signed_int(ps[start+28:start+30]), Signals.S_LED_SNS))
+		cur['LED2SNS'] = led_sns_mV_to_mA(untruncate(hex_string_byte_to_signed_int(ps[start+30:start+32]), Signals.S_LED_SNS))
+		cur['LED3SNS'] = led_sns_mV_to_mA(untruncate(hex_string_byte_to_signed_int(ps[start+32:start+34]), Signals.S_LED_SNS))
+		cur['LED4SNS'] = led_sns_mV_to_mA(untruncate(hex_string_byte_to_signed_int(ps[start+34:start+36]), Signals.S_LED_SNS))
 
 		magnetometer = {}
 		magnetometer['x'] = mag_raw_to_uT(untruncate(int(ps[start+36:start+38], 16), Signals.S_MAG))
@@ -489,10 +339,10 @@ def parse_low_power_data(ps):
 
 		cur['L1_REF'] = untruncate(int(ps[start+2:start+4], 16), Signals.S_LREF)
 		cur['L2_REF'] = untruncate(int(ps[start+4:start+6], 16), Signals.S_LREF)
-		cur['L1_SNS'] = untruncate(hex_string_byte_to_signed_int(ps[start+6:start+8]), Signals.S_L_SNS)
-		cur['L2_SNS'] = untruncate(hex_string_byte_to_signed_int(ps[start+8:start+10]), Signals.S_L_SNS)
-		cur['L1_TEMP'] = untruncate(hex_string_byte_to_signed_int(ps[start+10:start+12]), Signals.S_L_TEMP)
-		cur['L2_TEMP'] = untruncate(hex_string_byte_to_signed_int(ps[start+12:start+14]), Signals.S_L_TEMP)
+		cur['L1_SNS'] = l_sns_mV_to_mA(untruncate(hex_string_byte_to_signed_int(ps[start+6:start+8]), Signals.S_L_SNS))
+		cur['L2_SNS'] = l_sns_mV_to_mA(untruncate(hex_string_byte_to_signed_int(ps[start+8:start+10]), Signals.S_L_SNS))
+		cur['L1_TEMP'] = ad590_mV_to_C(untruncate(hex_string_byte_to_signed_int(ps[start+10:start+12]), Signals.S_L_TEMP))
+		cur['L2_TEMP'] = ad590_mV_to_C(untruncate(hex_string_byte_to_signed_int(ps[start+12:start+14]), Signals.S_L_TEMP))
 		cur['PANELREF'] = (untruncate(int(ps[start+14:start+16], 16), Signals.S_PANELREF)-130)*5580/1000
 		cur['L_REF'] = (untruncate(int(ps[start+16:start+18], 16), Signals.S_LREF)-50)*2717/1000
 
@@ -552,18 +402,13 @@ def parse_errors(ps, num_errors, message_type):
 	errors = []
 	start = getErrorStartByte(message_type)	
 	for i in range(0, num_errors):
-		cur = {}
-		'''print(ps[start:start+2])
-		print(ps[start+2:start+4])
-		print(ps[start+4:start+6])
-		print("Code: " + str(int(ps[start:start+2],16) & 0x7F))
-		print("Loc: " + str(int(ps[start+2:start+4],16)))
-		print("TS: " + str(int(ps[start+4:start+6],16)))
-		print("")'''
+		cur = {}		
 		cur['error_code'] = int(ps[start:start+2],16) & 0x7F
 		cur['priority_bit'] = get_bit(int(ps[start:start+2],16),7)
 		cur['error_location'] = int(ps[start+2:start+4],16)
 		cur['timestamp'] = int(ps[start+4:start+6],16)
+		cur['error_code_name'] = get_ECODE_name(cur['error_code'])
+		cur['error_location_name'] = get_ELOC_name(cur['error_location'])
 		errors.append(cur)
 		start += 6
 	return errors
@@ -615,7 +460,7 @@ def main():
 	lp2 = "574c39585a45f60b00002c960eff01b7c5585904040057e8ffe7e747471eb8c5585904040057e8f6a839a839a439ac39b739a4397f7f80f50b00001ec1c5585804040058e8f6a839a839a339a939ba39a4397f7f80e10b00001eb8c5585904040057e8f6a839a839a439ac39b739a4397f7f80f50b00001ec1c5585804040058e8f6a839a839a339a939ba39a4397f7f80e10b00001ecbc5585804040057e8f6a439a439a339a839ba39a0397f7f80cd0b00009b30079b31079c3107254607a73307a72907364e08b44c08ab34083b4b080815089b1aff9b2bff9b2aff00000000000000000000000000000000000000000000000000000000000000000000"
 
 	if (len(sys.argv) < 2):
-		parse_packet(attitude)
+		parse_packet(fb2)
 	else:
 		for x in sys.argv[1:]:
 			packets = find_packets(x)
