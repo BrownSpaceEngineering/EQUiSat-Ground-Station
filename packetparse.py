@@ -1,3 +1,5 @@
+#!/usr/bin/python
+
 from struct import unpack
 from binascii import unhexlify
 import json
@@ -45,7 +47,7 @@ def led_sns_mV_to_mA(mV):
 	return round(mV / .03, 0)
 
 
-def get_sat_state(val):	
+def get_sat_state(val):
 	return {
 		0:	'INITIAL',
 		1:	'ANTENNA_DEPLOY',
@@ -61,22 +63,22 @@ def get_message_type(val):
 		1:	'ATTITUDE',
 		2:	'FLASH_BURST',
 		3:	'FLASH_CMP',
-		4:	'LOW_POWER'		
+		4:	'LOW_POWER'
 	}[val]
 
 def parse_preamble(ps):
 	preamble = {}
 	preamble['callsign'] = ps[0:12].decode("hex")
 	preamble['timestamp'] = hex_to_int_le(ps[12:20])
-	
+
 	msg_op_states = int(ps[20:22],16)
 	preamble['message_type'] = get_message_type(msg_op_states & 0x07) #str(get_bit(msg_op_states, 7))+str(get_bit(msg_op_states, 6))+str(get_bit(msg_op_states, 5))
 	preamble['satellite_state'] = get_sat_state((msg_op_states >> 3) & 0x07) #str(get_bit(msg_op_states, 4))+str(get_bit(msg_op_states, 3))+str(get_bit(msg_op_states, 2))
-	
+
 	preamble['SPF_ST'] = str(get_bit(msg_op_states, 6))
 	preamble['MRAM_CPY'] = str(get_bit(msg_op_states, 7))
-	preamble['bytes_of_data'] = int(ps[22:24], 16)	
-	preamble['num_errors'] = int(ps[24:26], 16)	
+	preamble['bytes_of_data'] = int(ps[22:24], 16)
+	preamble['num_errors'] = int(ps[24:26], 16)
 	return preamble
 
 def parse_current_info(ps):
@@ -91,10 +93,10 @@ def parse_current_info(ps):
 	current_info['L2_TEMP'] = ad590_mV_to_C(untruncate(hex_string_byte_to_signed_int(ps[40:42]), Signals.S_L_TEMP))
 	current_info['PANELREF'] = (untruncate(int(ps[42:44], 16), Signals.S_PANELREF)-130)*5580/1000
 	current_info['L_REF'] = (untruncate(int(ps[44:46], 16), Signals.S_LREF)-50)*2717/1000
-	
+
 	bat_digsigs_1 = int(ps[46:48],16)
 	bat_digsigs_2 = int(ps[48:50],16)
-	
+
 	current_info['L1_RUN_CHG'] = str(get_bit(bat_digsigs_2, 0))
 	current_info['L2_RUN_CHG'] = str(get_bit(bat_digsigs_2, 1))
 	current_info['LF_B1_RUN_CHG'] = str(get_bit(bat_digsigs_2, 2))
@@ -117,14 +119,14 @@ def parse_current_info(ps):
 	current_info['LF2REF'] = untruncate(int(ps[52:54], 16), Signals.S_LF_VOLT)
 	current_info['LF3REF'] = untruncate(int(ps[54:56], 16), Signals.S_LF_VOLT)
 	current_info['LF4REF'] = untruncate(int(ps[56:58], 16), Signals.S_LF_VOLT)
-	
+
 	return current_info
 
 def parse_attitude_data(ps):
 	data = []
 	start = DATA_SECTION_START_BYTE
 	for i in range(0, ATTITUDE_BATCHES_PER_PACKET):
-		cur = {}		
+		cur = {}
 		cur['IR_FLASH_OBJ'] = ir_raw_to_C(hex_to_int_le(ps[start:start+4]+'0000'))
 		cur['IR_SIDE1_OBJ'] = ir_raw_to_C(hex_to_int_le(ps[start+4:start+8]+'0000'))
 		cur['IR_SIDE2_OBJ'] = ir_raw_to_C(hex_to_int_le(ps[start+8:start+12]+'0000'))
@@ -182,7 +184,7 @@ def parse_idle_data(ps):
 	data = []
 	start = DATA_SECTION_START_BYTE
 	for i in range(0, IDLE_BATCHES_PER_PACKET):
-		cur = {}		
+		cur = {}
 		event_history = int(ps[start:start+2],16)
 		cur['ANTENNA_DEPLOYED'] = str(get_bit(event_history, 7))
 		cur['LION_1_CHARGED'] = str(get_bit(event_history, 6))
@@ -235,25 +237,25 @@ def parse_idle_data(ps):
 		cur['timestamp'] = hex_to_int_le(ps[start+38:start+46])
 
 		data.append(cur)
-		start += 46	
+		start += 46
 	return data
 
 def parse_flash_burst_data(ps):
 	data = {}
 	burst = [dict() for x in range(FLASHBURST_BATCHES_PER_PACKET)]
-	start = DATA_SECTION_START_BYTE			
+	start = DATA_SECTION_START_BYTE
 	for i in range(0, FLASHBURST_BATCHES_PER_PACKET):
 		burst[i]['LED1TEMP'] = ad590_mV_to_C(untruncate(hex_string_byte_to_signed_int(ps[start:start+2]), Signals.S_LED_TEMP_FLASH))
 		burst[i]['LED2TEMP'] = ad590_mV_to_C(untruncate(hex_string_byte_to_signed_int(ps[start+2:start+4]), Signals.S_LED_TEMP_FLASH))
 		burst[i]['LED3TEMP'] = ad590_mV_to_C(untruncate(hex_string_byte_to_signed_int(ps[start+4:start+6]), Signals.S_LED_TEMP_FLASH))
 		burst[i]['LED4TEMP'] = ad590_mV_to_C(untruncate(hex_string_byte_to_signed_int(ps[start+6:start+8]), Signals.S_LED_TEMP_FLASH))
 		start += 8
-		
-	for i in range(0, FLASHBURST_BATCHES_PER_PACKET):		
+
+	for i in range(0, FLASHBURST_BATCHES_PER_PACKET):
 		burst[i]['LF1_TEMP'] = ad590_mV_to_C(untruncate(hex_string_byte_to_signed_int(ps[start:start+2]), Signals.S_LF_TEMP))
 		burst[i]['LF3_TEMP'] = ad590_mV_to_C(untruncate(hex_string_byte_to_signed_int(ps[start+2:start+4]), Signals.S_LF_TEMP))
 		start += 4
-		
+
 	for i in range(0, FLASHBURST_BATCHES_PER_PACKET):
 		burst[i]['LFB1SNS'] = lfbsns_mV_to_mA(untruncate(hex_string_byte_to_signed_int(ps[start:start+2]), Signals.S_LF_SNS_FLASH))
 		burst[i]['LFB1OSNS'] = lfbosns_mV_to_mA(untruncate(hex_string_byte_to_signed_int(ps[start+2:start+4]), Signals.S_LF_OSNS_FLASH))
@@ -268,7 +270,7 @@ def parse_flash_burst_data(ps):
 		burst[i]['LF4REF'] = untruncate(hex_string_byte_to_signed_int(ps[start+6:start+8]), Signals.S_LF_VOLT)
 		start += 8
 
-	for i in range(0, FLASHBURST_BATCHES_PER_PACKET):		
+	for i in range(0, FLASHBURST_BATCHES_PER_PACKET):
 		burst[i]['LED1SNS'] = led_sns_mV_to_mA(untruncate(hex_string_byte_to_signed_int(ps[start:start+2]), Signals.S_LED_SNS))
 		burst[i]['LED2SNS'] = led_sns_mV_to_mA(untruncate(hex_string_byte_to_signed_int(ps[start+2:start+4]), Signals.S_LED_SNS))
 		burst[i]['LED3SNS'] = led_sns_mV_to_mA(untruncate(hex_string_byte_to_signed_int(ps[start+4:start+6]), Signals.S_LED_SNS))
@@ -297,7 +299,7 @@ def parse_flash_cmp_data(ps):
 		cur['LED4TEMP'] = ad590_mV_to_C(untruncate(hex_string_byte_to_signed_int(ps[start+6:start+8]), Signals.S_LED_TEMP_FLASH))
 		cur['LF1_TEMP'] = ad590_mV_to_C(untruncate(hex_string_byte_to_signed_int(ps[start+8:start+10]), Signals.S_LF_TEMP))
 		cur['LF3_TEMP'] = ad590_mV_to_C(untruncate(hex_string_byte_to_signed_int(ps[start+10:start+12]), Signals.S_LF_TEMP))
-		
+
 		cur['LFB1SNS'] = lfbsns_mV_to_mA(untruncate(hex_string_byte_to_signed_int(ps[start+12:start+14]), Signals.S_LF_SNS_FLASH))
 		cur['LFB1OSNS'] = lfbosns_mV_to_mA(untruncate(hex_string_byte_to_signed_int(ps[start+14:start+16]), Signals.S_LF_OSNS_FLASH))
 		cur['LFB2SNS'] = lfbsns_mV_to_mA(untruncate(hex_string_byte_to_signed_int(ps[start+16:start+18]), Signals.S_LF_SNS_FLASH))
@@ -327,7 +329,7 @@ def parse_low_power_data(ps):
 	data = []
 	start = DATA_SECTION_START_BYTE
 	for i in range(0, LOWPOWER_BATCHES_PER_PACKET):
-		cur = {}		
+		cur = {}
 		event_history = int(ps[start:start+2],16)
 		cur['ANTENNA_DEPLOYED'] = str(get_bit(event_history, 7))
 		cur['LION_1_CHARGED'] = str(get_bit(event_history, 6))
@@ -365,7 +367,7 @@ def parse_low_power_data(ps):
 		cur['L1_CHGN'] = str(get_bit(bat_digsigs_2, 3))
 		cur['L1_FAULTN'] = str(get_bit(bat_digsigs_2, 3))
 		cur['L2_CHGN'] = str(get_bit(bat_digsigs_2, 2))
-		cur['L2_FAULTN'] = str(get_bit(bat_digsigs_2, 1))		
+		cur['L2_FAULTN'] = str(get_bit(bat_digsigs_2, 1))
 
 		cur['IR_FLASH_OBJ'] = ir_raw_to_C(hex_to_int_le(ps[start+22:start+26]+'0000'))
 		cur['IR_SIDE1_OBJ'] = ir_raw_to_C(hex_to_int_le(ps[start+26:start+30]+'0000'))
@@ -400,9 +402,9 @@ def getErrorStartByte(message_type):
 
 def parse_errors(ps, num_errors, message_type):
 	errors = []
-	start = getErrorStartByte(message_type)	
+	start = getErrorStartByte(message_type)
 	for i in range(0, num_errors):
-		cur = {}		
+		cur = {}
 		cur['error_code'] = int(ps[start:start+2],16) & 0x7F
 		cur['priority_bit'] = get_bit(int(ps[start:start+2],16),7)
 		cur['error_location'] = int(ps[start+2:start+4],16)
@@ -424,7 +426,7 @@ def parse_data_section(message_type, ps):
 		return parse_flash_cmp_data(ps)
 	elif (message_type == 'LOW_POWER'):
 		return parse_low_power_data(ps)
-		
+
 
 def parse_packet(ps):
 	if (len(ps) != 510):
@@ -434,9 +436,9 @@ def parse_packet(ps):
 	packet['preamble'] = parse_preamble(ps)
 	packet['current_info'] = parse_current_info(ps)
 	message_type = packet['preamble']['message_type']
-	
-	packet['data'] = parse_data_section(message_type, ps)	
-	num_errors = packet['preamble']['num_errors']	
+
+	packet['data'] = parse_data_section(message_type, ps)
+	num_errors = packet['preamble']['num_errors']
 	packet['errors'] = parse_errors(ps, num_errors, message_type)
 	packet_JSON = json.dumps(packet, indent=4)
 	print(packet_JSON)
@@ -449,7 +451,7 @@ def find_packets(file):
 
 
 
-def main():	
+def main():
 	attitude = "574c39585a457d6e000021a5092702dfde585104042754e0f1aeb1b1b2e339ba39bf39af39a839173a5609823f80823f817f7f80777879777879e46a0000dd39bd39cb39af39b7390b3a5609823f81823f807f7f8077787977787970660000d439bb39c639a139ac39033a5609823f80823f807f7f80777879777879fc610000cf39b439bf399b39a639ff395609823f81823f807f7f80777879777879885d0000d539ac39ac399b39a939fb395609823f80823f807f7f8077787977787914590000a732529b2a569c2a5608150008155a9c295a9b305e9b305ea23e5e0000b8bf966e88d0864f8bc4b68a23f6a54b585f5f843d9dded0c2e252bdbe1ebd85"
 	idle = "574c39585a455136000020a10b1302dee4515d04042854f0b2afb3aeb13edfe3515f04042854f0b28f5a5757585657588d3400003ee2df5d5104042854f0e18f5a575758565758453100003edfe3515c04042854f0b28f5a575758565758fd2d00003ee1e4515f04042854f0b28f5a575758565758b52a00003ee3e05e5104042855f0e18f5a5757585657586d2700003edfe3515c04042854f0b28f5a575758565758252400003edfe337600404274ef0b28f5a575758565758dd20000008152a9c292a9b302e9b302ea23e2ec63e2ec63e2ea23e2e9b29019b291a9b2a0230f07b4a31312c9cf5121ed6feccc6d0181e9ebe63eba5e6b3d895eeb9f5c2f1"
 	fb1 = "574c39585a454100000022970e3b02e2e05c5104042855f0e1b1b4b1b404040404040404040404040404040404040404040304040404040404040404040404040404040404040403060303d039c846d139c945d139c945d139c9450306030303060303b1b4b1b4a2a2a2a2a2a1a0a2a1a29ea1a2a29ea1afb3b3b2b1b3b0b30202020044634e3f47564e3f5b58493f42534e3c02020200020202007f7f807f7f807f7f807f7f807f7f807f7f807f7f80400000009b30009b3000a23e00c63e00c63e00a23e009b30009b3000a23e00c63e00c63e00a23e009b30009b300000c51d74120214a6769f810b5aa75f29027a5b147de21add293392058b7ef1cc0d"
@@ -465,7 +467,7 @@ def main():
 		for x in sys.argv[1:]:
 			packets = find_packets(x)
 			for packet in packets:
-				parse_packet(packet)	
+				parse_packet(packet)
 
 if __name__ == "__main__":
     main()
