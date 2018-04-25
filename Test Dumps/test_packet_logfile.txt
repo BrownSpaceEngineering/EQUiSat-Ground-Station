@@ -1,0 +1,775 @@
+z: 128	18
+ 4: ---------Attitude Data Packet---------
+timestamp: 21633 	 TRANSMITTED
+ir objs
+	1: 0	-273 C
+	2: 0	-273 C
+	3: 3787776	22 C
+	4: 3789312	22 C
+	5: 0	-273 C
+	6: 3787776	22 C
+pdiode 0: 1
+pdiode 1: 2
+pdiode 2: 3
+pdiode 3: 1
+pdiode 4: 1
+pdiode 5: 1
+accel batches (500ms apart):
+accel
+	x: 124	-1024
+	y: 130	512
+	z: 194	16896
+accel
+	x: 124	-1024
+	y: 130	512
+	z: 194	16896
+magnetometer batches (500ms apart):
+mag
+	x: 118	-54
+	y: 120	-8
+	z: 120	-8
+mag
+	x: 118	-54
+	y: 120	-8
+	z: 120	-8
+gyro
+	x: 127	-238
+	y: 127	-238
+	z: 128	18
+
+----Raw Hex Data----
+
+574c39585a45d36b000021a5323b03e3dc5b5547472855f0e1b8b29eb300000000b839c5390000c03979097c83c27c82c17f7f807678787678784a67000000000000ba39cb390000c23979097c82c17c82c17f7f807678787678789162000000000000bb39cb390000c83979057c82c17c82c17f7f80767878767878e15d000000000000cc39d1390000d23979097c82c17c82c27f7f807678787678783159000000000000cc39d2390000cc3979057c82c27c82c27f7f80767878767878815400009c2e069b20009b1eff9b20069b1e062643060e05060e02060e01060000d861344098e0d13bef298f71958d3bbc5983b70124c5729aad087711765212e2
+
+=======End Sample Transmission=======
+Transmitted 255 bytes
+
+=======
+RADIO CURRENT: 1421 mA
+=======
+=========Sample Transmission=========
+type: FLASH_DATA
+
+----Data Summary----
+timestamp: 	27603
+sat state: 	IDLE_FLASH
+reboot #:  	3
+num errors:	50
+
+
+============Current Data============
+secs to next flash: 59
+reboot count: 3
+L1_REF: 227 4150 mV
+L2_REF: 220 4022 mV
+L1_SNS: 91 1014 mV	58 mA
+L2_SNS: 85 938 mV	-94 mA
+L1_TEMP: 71	568 mV	-34 C
+L2_TEMP: 71	568 mV	 -34 C
+refs: PANELREF: 40 1706 mV	8794 mV
+L_REF: 85 1554 mV	4086 mV
+---Battery Charging Digital Signals---
+L1_RUN_CHG:     0
+L2_RUN_CHG:     0
+LF_B1_RUN_CHG:  0
+LF_B2_RUN_CHG:  0
+LF_B2_CHGN:     1
+LF_B2_FAULTN:   1
+LF_B1_FAULTN:   1
+LF_B1_CHGN:     1
+L2_ST:          1
+L1_ST:          0
+L1_DISG:        0
+L2_DISG:        0
+L1_CHGN:        0
+L1_FAULTN:      1
+L2_CHGN:        1
+L2_FAULTN:      1
+lifepo volts
+	LF1REF: 184	3364 mV
+	LF2REF: 178	3254 mV
+	LF3REF: 158	2889 mV
+	LF4REF: 179	3273 mV
+
+==============Error Stack==============
+size: 50/50 	 top: 14 	 bottom: 16
+data (max n=-1):
+ 0: error (normal  ): loc=ELOC_FLASH (67)	 code=ECODE_CRIT_ACTION_MUTEX_TIMEOUT (38)	 @ 27525
+ 1: error (priority): loc=ELOC_LFB2OSNS (31)	 code=ECODE_READING_LOW (28)	 @ 27605
+ 2: error (priority): loc=ELOC_LED4SNS (28)	 code=ECODE_READING_LOW (28)	 @ 27605
+ 3: error (priority): loc=ELOC_LFB2SNS (32)	 code=ECODE_READING_LOW (28)	 @ 27605
+ 4: error (priority): loc=ELOC_LED3SNS (27)	 code=ECODE_READING_LOW (28)	 @ 27605
+ 5: error (priority): loc=ELOC_LFB1OSNS (29)	 code=ECODE_READING_LOW (28)	 @ 27605
+ 6: error (priority): loc=ELOC_LED2SNS (26)	 code=ECODE_READING_LOW (28)	 @ 27605
+ 7: error (priority): loc=ELOC_LFB1SNS (30)	 code=ECODE_READING_LOW (28)	 @ 27605
+ 8: error (priority): loc=ELOC_LED1SNS (25)	 code=ECODE_READING_LOW (28)	 @ 27605
+ 9: error (normal  ): loc=ELOC_BAT_CHARGING (60)	 code=ECODE_CRIT_ACTION_MUTEX_TIMEOUT (38)	 @ 27072
+10: error (priority): loc=ELOC_BAT_LFB2 (76)	 code=ECODE_BAT_LF_CELLS_UNBALANCED (86)	 @ 27062
+11: error (priority): loc=ELOC_LFB2OSNS (31)	 code=ECODE_READING_LOW (28)	 @ 27072
+12: error (priority): loc=ELOC_LED4SNS (28)	 code=ECODE_READING_LOW (28)	 @ 27072
+13: error (priority): loc=ELOC_LFB2SNS (32)	 code=ECODE_READING_LOW (28)	 @ 27072
+14: error (priority): loc=ELOC_LED3SNS (27)	 code=ECODE_READING_LOW (28)	 @ 27072
+15: errPet watchdogchdog16: error (priority): loc=ELOC_LED2SNS (26)	 code=ECODE_READING_LOW (28)	 @ 27072
+17: error (priority): loc=ELOC_LFB1SNS (30)	 code=ECODE_READING_LOW (28)	 @ 27072
+18: error (priority): loc=ELOC_LED1SNS (25)	 code=ECODE_READING_LOW (28)	 @ 27072
+19: error (normal  ): loc=ELOC_IMU_GYRO (23)	 code=ECODE_BAD_ADDRESS (14)	 @ 27587
+20: error (normal  ): loc=ELOC_IMU_GYRO (23)	 code=ECODE_BAD_ADDRESS (14)	 @ 26153
+21: error (priority): loc=ELOC_AD7991_BBRD_L2_SNS (41)	 code=ECODE_READING_HIGH (27)	 @ 27393
+22: error (normal  ): loc=ELOC_RADIO_TEMP (21)	 code=ECODE_TIMEOUT (8)	 @ 27601
+23: error (normal  ): loc=ELOC_RADIO_TEMP (21)	 code=ECODE_TIMEOUT (8)	 @ 25976
+24: error (normal  ): loc=ELOC_IR_NEG_Z (5)	 code=ECODE_READING_LOW (28)	 @ 27585
+25: error (normal  ): loc=ELOC_IR_NEG_X (2)	 code=ECODE_READING_LOW (28)	 @ 27585
+26: error (normal  ): loc=ELOC_IR_POS_Y (1)	 code=ECODE_READING_LOW (28)	 @ 27585
+27: error (priority): loc=ELOC_AD7991_BBRD_L2_SNS (41)	 code=ECODE_READING_HIGH (27)	 @ 25963
+28: error (normal  ): loc=ELOC_IR_NEG_Z (5)	 code=ECODE_READING_LOW (28)	 @ 25782
+29: error (normal  ): loc=ELOC_IR_NEG_X (2)	 code=ECODE_READING_LOW (28)	 @ 25782
+30: error (normal  ): loc=ELOC_IR_POS_Y (1)	 code=ECODE_READING_LOW (28)	 @ 25782
+31: error (priority): loc=ELOC_AD7991_CBRD_5V_REF (48)	 code=ECODE_READING_HIGH (27)	 @ 27609
+32: error (priority): loc=ELOC_AD7991_CBRD_5V_REF (48)	 code=ECODE_READING_HIGH (27)	 @ 25730
+33: error (priority): loc=ELOC_AD7991_CBRD_5V_REF (48)	 code=ECODE_READING_LOW (28)	 @ 27603
+34: error (priority): loc=ELOC_AD7991_CBRD_3V6_SNS (47)	 code=ECODE_READING_HIGH (27)	 @ 27603
+35: error (priority): loc=ELOC_AD7991_CBRD_3V6_REF (46)	 code=ECODE_READING_LOW (28)	 @ 27609
+36: error (normal  ): loc=ELOC_IR_NEG_Z (5)	 code=ECODE_BAD_ADDRESS (14)	 @ 27585
+37: error (normal  ): loc=ELOC_IR_NEG_X (2)	 code=ECODE_BAD_ADDRESS (14)	 @ 27585
+38: error (normal  ): loc=ELOC_IR_POS_Y (1)	 code=ECODE_BAD_ADDRESS (14)	 @ 27585
+39: error (priority): loc=ELOC_AD7991_CBRD_5V_REF (48)	 code=ECODE_READING_LOW (28)	 @ 25708
+40: error (priority): loc=ELOC_AD7991_CBRD_3V6_SNS (47)	 code=ECODE_READING_HIGH (27)	 @ 25708
+41: error (priority): loc=ELOC_AD7991_CBRD_3V6_REF (46)	 code=ECODE_READING_LOW (28)	 @ 25721
+42: error (priority): loc=ELOC_LFB2SNS (32)	 code=ECODE_READING_HIGH (27)	 @ 27587
+43: error (priority): loc=ELOC_LFB1SNS (30)	 code=ECODE_READING_HIGH (27)	 @ 27605
+44: error (priority): loc=ELOC_LFB2SNS (32)	 code=ECODE_READING_HIGH (27)	 @ 25618
+45: error (priority): loc=ELOC_LFB1SNS (30)	 code=ECODE_READING_HIGH (27)	 @ 25618
+46: error (normal  ): loc=ELOC_FLASH (67)	 code=ECODE_CRIT_ACTION_MUTEX_TIMEOUT (38)	 @ 25613
+47: error (normal  ): loc=ELOC_IR_NEG_Z (5)	 code=ECODE_BAD_ADDRESS (14)	 @ 25602
+48: error (normal  ): loc=ELOC_IR_NEG_X (2)	 code=ECODE_BAD_ADDRESS (14)	 @ 25602
+49: error (normal  ): loc=ELOC_IR_POS_Y (1)	 code=ECODE_BAD_ADDRESS (14)	 @ 25602
+
+note: there's more information here than is in the packet (look for non-transmitted packets)
+
+==============Flash Data Stack==============
+size: 3/3 	 top: 2 	 bottom: 0
+data (max n=-1):
+---------LED BURST Data---------
+ 0: ---------Flash Data Packet---------
+timestamp: 27605 	 TRANSMITTED
+LED Temps
+	1: 71	568 mV	-34C
+	2: 71	568 mV	-34C
+	3: 71	568 mV	-34C
+	4: 71	568 mV	-34C
+LED Temps
+	1: 71	568 mV	-34C
+	2: 71	568 mV	-34C
+	3: 71	568 mV	-34C
+	4: 71	568 mV	-34C
+LED Temps
+	1: 70	560 mV	-35C
+	2: 71	568 mV	-34C
+	3: 71	568 mV	-34C
+	4: 71	568 mV	-34C
+LED Temps
+	1: 70	560 mV	-35C
+	2: 70	560 mV	-35C
+	3: 70	560 mV	-35C
+	4: 71	568 mV	-34C
+LED Temps
+	1: 70	560 mV	-35C
+	2: 70	560 mV	-35C
+	3: 71	568 mV	-34C
+	4: 71	568 mV	-34C
+LED Temps
+	1: 70	560 mV	-35C
+	2: 71	568 mV	-34C
+	3: 71	568 mV	-34C
+	4: 71	568 mV	-34C
+LED Temps
+	1: 70	560 mV	-35C
+	2: 70	560 mV	-35C
+	3: 70	560 mV	-35C
+	4: 71	568 mV	-34C
+lifepo bat temps
+	1: 71	568 mV	-34 C
+	2: 71	568 mV	-34 C
+lifepo bat temps
+	1: 71	568 mV	-34 C
+	2: 71	568 mV	-34 C
+lifepo bat temps
+	1: 70	560 mV	-35 C
+	2: 71	560 mV	-34 C
+lifepo bat temps
+	1: 70	560 mV	-35 C
+	2: 71	560 mV	-34 C
+lifepo bat temps
+	1: 70	560 mV	-35 C
+	2: 71	560 mV	-34 C
+lifepo bat temps
+	1: 70	560 mV	-35 C
+	2: 71	560 mV	-34 C
+lifepo bat temps
+	1: 70	560 mV	-35 C
+	2: 71	560 mV	-34 C
+	LFB1SNS: 255	2410 mV	71500 mA
+	LFB1OSNS: 0	0 mV	0 mA
+	LFB2SNS: 0	960 mV	-950 mA
+	LFB2OSNS: 0	0 mV	0 mA
+
+	LFB1SNS: 0	960 mV	-1000 mA
+	LFB1OSNS: 0	0 mV	0 mA
+	LFB2SNS: 0	960 mV	-950 mA
+	LFB2OSNS: 0	0 mV	0 mA
+
+	LFB1SNS: 0	960 mV	-1000 mA
+	LFB1OSNS: 0	0 mV	0 mA
+	LFB2SNS: 0	960 mV	-950 mA
+	LFB2OSNS: 0	0 mV	0 mA
+
+	LFB1SNS: 0	960 mV	-1000 mA
+	LFB1OSNS: 0	0 mV	0 mA
+	LFB2SNS: 0	960 mV	-950 mA
+	LFB2OSNS: 0	0 mV	0 mA
+
+	LFB1SNS: 0	960 mV	-1000 mA
+	LFB1OSNS: 0	0 mV	0 mA
+	LFB2SNS: 0	960 mV	-950 mA
+	LFB2OSNS: 0	0 mV	0 mA
+
+	LFB1SNS: 0	960 mV	-1000 mA
+	LFB1OSNS: 0	0 mV	0 mA
+	LFB2SNS: 0	960 mV	-950 mA
+	LFB2OSNS: 0	0 mV	0 mA
+
+	LFB1SNS: 0	960 mV	-1000 mA
+	LFB1OSNS: 0	0 mV	0 mA
+	LFB2SNS: 0	960 mV	-950 mA
+	LFB2OSNS: 0	0 mV	0 mA
+
+lifepo volts
+	LF1REF: 165	3017 mV
+	LF2REF: 157	2870 mV
+	LF3REF: 178	3254 mV
+	LF4REF: 157	2870 mV
+lifepo volts
+	LF1REF: 166	3035 mV
+	LF2REF: 157	2870 mV
+	LF3REF: 179	3273 mV
+	LF4REF: 157	2870 mV
+lifepo volts
+	LF1REF: 167	3053 mV
+	LF2REF: 156	2852 mV
+	LF3REF: 176	3218 mV
+	LF4REF: 158	2889 mV
+lifepo volts
+	LF1REF: 165	3017 mV
+	LF2REF: 158	2889 mV
+	LF3REF: 176	3218 mV
+	LF4REF: 157	2870 mV
+lifepo volts
+	LF1REF: 166	3035 mV
+	LF2REF: 157	2870 mV
+	LF3REF: 178	3254 mV
+	LF4REF: 157	2870 mV
+lifepo volts
+	LF1REF: 164	2998 mV
+	LF2RPet watchdogatchdog	LF3REF: 179	3273 mV
+	LF4REF: 157	2870 mV
+lifepo volts
+	LF1REF: 166	3035 mV
+	LF2REF: 157	2870 mV
+	LF3REF: 178	3254 mV
+	LF4REF: 157	2870 mV
+led current
+	LED1SNS: 7	2 mV	66 mA
+	LED2SNS: 10	3 mV	100 mA
+	LED3SNS: 2	0 mV	0 mA
+	LED4SNS: 10	3 mV	100 mA
+led current
+	LED1SNS: 7	2 mV	66 mA
+	LED2SNS: 7	2 mV	66 mA
+	LED3SNS: 5	1 mV	33 mA
+	LED4SNS: 10	3 mV	100 mA
+led current
+	LED1SNS: 7	2 mV	66 mA
+	LED2SNS: 10	3 mV	100 mA
+	LED3SNS: 5	1 mV	33 mA
+	LED4SNS: 10	3 mV	100 mA
+led current
+	LED1SNS: 7	2 mV	66 mA
+	LED2SNS: 7	2 mV	66 mA
+	LED3SNS: 5	1 mV	33 mA
+	LED4SNS: 10	3 mV	100 mA
+led current
+	LED1SNS: 7	2 mV	66 mA
+	LED2SNS: 10	3 mV	100 mA
+	LED3SNS: 2	0 mV	0 mA
+	LED4SNS: 7	2 mV	66 mA
+led current
+	LED1SNS: 7	2 mV	66 mA
+	LED2SNS: 7	2 mV	66 mA
+	LED3SNS: 2	0 mV	0 mA
+	LED4SNS: 10	3 mV	100 mA
+led current
+	LED1SNS: 7	2 mV	66 mA
+	LED2SNS: 7	2 mV	66 mA
+	LED3SNS: 5	1 mV	33 mA
+	LED4SNS: 10	3 mV	100 mA
+gyro
+	x: 127	-238
+	y: 127	-238
+	z: 128	18
+gyro
+	x: 127	-238
+	y: 127	-238
+	z: 128	18
+gyro
+	x: 127	-238
+	y: 127	-238
+	z: 128	18
+gyro
+	x: 127	-238
+	y: 127	-238
+	z: 128	18
+gyro
+	x: 127	-238
+	y: 127	-238
+	z: 128	18
+gyro
+	x: 127	-238
+	y: 127	-238
+	z: 128	18
+gyro
+	x: 127	-238
+	y: 127	-238
+	z: 128	18
+---------END LED BURST Data---------
+---------LED BURST Data---------
+ 1: ---------Flash Data Packet---------
+timestamp: 27604 	 not transmitted
+LED Temps
+	1: 71	568 mV	-34C
+	2: 71	568 mV	-34C
+	3: 71	568 mV	-34C
+	4: 71	568 mV	-34C
+LED Temps
+	1: 71	568 mV	-34C
+	2: 71	568 mV	-34C
+	3: 71	568 mV	-34C
+	4: 71	568 mV	-34C
+LED Temps
+	1: 70	560 mV	-35C
+	2: 70	560 mV	-35C
+	3: 71	568 mV	-34C
+	4: 71	568 mV	-34C
+LED Temps
+	1: 70	560 mV	-35C
+	2: 70	560 mV	-35C
+	3: 70	560 mV	-35C
+	4: 71	568 mV	-34C
+LED Temps
+	1: 70	560 mV	-35C
+	2: 70	560 mV	-35C
+	3: 70	560 mV	-35C
+	4: 71	568 mV	-34C
+LED Temps
+	1: 70	560 mV	-35C
+	2: 70	560 mV	-35C
+	3: 70	560 mV	-35C
+	4: 71	568 mV	-34C
+LED Temps
+	1: 70	560 mV	-35C
+	2: 70	560 mV	-35C
+	3: 71	568 mV	-34C
+	4: 71	568 mV	-34C
+lifepo bat temps
+	1: 71	568 mV	-34 C
+	2: 71	568 mV	-34 C
+lifepo bat temps
+	1: 71	568 mV	-34 C
+	2: 71	568 mV	-34 C
+lifepo bat temps
+	1: 70	560 mV	-35 C
+	2: 71	560 mV	-34 C
+lifepo bat temps
+	1: 70	560 mV	-35 C
+	2: 71	560 mV	-34 C
+lifepo bat temps
+	1: 70	560 mV	-35 C
+	2: 71	560 mV	-34 C
+lifepo bat temps
+	1: 70	560 mV	-35 C
+	2: 71	560 mV	-34 C
+lifepo bat temps
+	1: 70	560 mV	-35 C
+	2: 71	560 mV	-34 C
+	LFB1SNS: 0	960 mV	-1000 mA
+	LFB1OSNS: 0	0 mV	0 mA
+	LFB2SNS: 0	960 mV	-950 mA
+	LFB2OSNS: 0	0 mV	0 mA
+
+	LFB1SNS: 0	960 mV	-1000 mA
+	LFB1OSNS: 0	0 mV	0 mA
+	LFB2SNS: 0	960 mV	-950 mA
+	LFB2OSNS: 0	0 mV	0 mA
+
+	LFB1SNS: 0	960 mV	-1000 mA
+	LFB1OSNS: 0	0 mV	0 mA
+	LFB2SNS: 0	960 mV	-950 mA
+	LFB2OSNS: 0	0 mV	0 mA
+
+	LFB1SNS: 0	960 mV	-1000 mA
+	LFB1OSNS: 0	0 mV	0 mA
+	LFB2SNS: 0	960 mV	-950 mA
+	LFB2OSNS: 0	0 mV	0 mA
+
+	LFB1SNS: 0	960 mV	-1000 mA
+	LFB1OSNS: 0	0 mV	0 mA
+	LFB2SNS: 0	960 mV	-950 mA
+	LFB2OSNS: 0	0 mV	0 mA
+
+	LFB1SNS: 0	960 mV	-1000 mA
+	LFB1OSNS: 0	0 mV	0 mA
+	LFB2SNS: 0	960 mV	-950 mA
+	LFB2OSNS: 0	0 mV	0 mA
+
+	LFB1SNS: 0	960 mV	-1000 mA
+	LFB1OSNS: 0	0 mV	0 mA
+	LFB2SNS: 0	960 mV	-950 mA
+	LFB2OSNS: 0	0 mV	0 mA
+
+lifepo volts
+	LF1REF: 164	2998 mV
+	LF2REF: 157	2870 mV
+	LF3REF: 177	3236 mV
+	LF4REF: 158	2889 mV
+lifepo volts
+	LF1REF: 166	3035 mV
+	LF2REF: 157	2870 mV
+	LF3REF: 175	3200 mV
+	LF4REF: 158	2889 mV
+lifepo volts
+	LF1REF: 162	2962 mV
+	LF2REF: 157	2870 mV
+	LF3REF: 178	3254 mV
+	LF4REF: 156	2852 mV
+lifepo volts
+	LF1REF: 165	3017 mV
+	LF2REF: 157	2870 mV
+	LF3REF: 178	3254 mV
+	LF4REF: 156	2852 mV
+lifepo volts
+	LF1REF: 166	3035 mV
+	LF2REF: 157	2870 mV
+	LF3REF: 179	3273 mV
+	LF4REF: 157	2870 mV
+lifepo volts
+	LF1REF: 165	3017 mV
+	LF2REF: 157	2870 mV
+	LF3REF: 179	3273 mV
+	LF4REF: 158	2889 mV
+lifepo volts
+	LF1REF: 164	2998 mV
+	LF2REF: 158	2889 mV
+	LF3REF: 176	3218 mV
+	LF4REF: 157	2870 mV
+led current
+	LED1SNS: 7	2 mV	66 mA
+	LED2SNS: 7	2 mV	66 mA
+	LED3SNS: 5	1 mV	33 mA
+	LED4SNS: 7	2 mV	66 mA
+led current
+	LED1SNS: 7	2 mV	66 mA
+	LED2SNS: 7	2 mV	66 mA
+	LED3SNS: 5	1 mV	33 mA
+	LED4SNS: 10	3 mV	100 mA
+led current
+	LED1SNS: 7	2 mV	66 mA
+	LED2SNS: 7	2 mV	66 mA
+	LED3SNS: 5	1 mV	33 mA
+	LED4SNS: 10	3 mV	100 mA
+led current
+	LED1SNS: 10	3 mV	100 mA
+	LED2SNS: 10	3 mV	100 mA
+	LED3SNS: 5	1 mV	33 mA
+	LED4SNS: 10	3 mV	100 mA
+led current
+	LED1SNS: 7	2 mV	66 mA
+	LED2SNS: 7	2 mV	66 mA
+	LED3SNS: 2	0 mV	0 mA
+	LED4SNS: 10	3 mV	100 mA
+led current
+	LED1SNS: 7	2 mV	66 mA
+	LED2SNS: 7	2 mV	66 mA
+	LED3SNS: 5	1 mV	33 mA
+	LED4SNS: 10	3 mV	100 mA
+led current
+	LED1SNS: 7	2 mV	66 mA
+	LED2SNS: 7	2 mV	66 mA
+	LED3SNS: 2	0 mV	0 mA
+	LED4SNS: 10	3 mV	100 mA
+gyro
+	x: 127	-238
+	y: 127	-238
+	z: 128	18
+gyro
+	x: 127	-238
+	y: 127	-238
+	z: 128	18
+gyro
+	x: 127	-238
+	y: 127	-238
+	z: 128	18
+gyro
+	x: 127	-238
+	y: 127	-238
+	z: 128	18
+gyro
+	x: 127	-238
+	y: 127	-238
+	z: 128	18
+gyro
+	x: 127	-238
+	y: 127	-238
+	z: 128	18
+gyro
+	x: 127	-238
+	y: 127	-238
+	z: 128	18
+---------END LED BURST Data---------
+---------LED BURST Data---------
+ 2: ---------Flash Data Packet---------
+timestamp: 27602 	 not transmitted
+LED Temps
+	1: 70	560 mV	-35C
+	2: 71	568 mV	-34C
+	3: 71	568 mV	-34C
+	4: 71	568 mV	-34C
+LED Temps
+	1: 70	560 mV	-35C
+	2: 71	568 mV	-34C
+	3: 71	568 mV	-34C
+	4: 71	568 mV	-34C
+LED Temps
+	1: 70	560 mV	-35C
+	2: 71	568 mV	-34C
+	3: 71	568 mV	-34C
+	4: 71	568 mV	-34C
+LED Temps
+	1: 70	560 mV	-35C
+	2: 70	560 mV	-35C
+	3: 71	568 mV	-34C
+	4: 71	568 mV	-34C
+LED Temps
+	1: 70	560 mV	-35C
+	2: 70	560 mV	-35C
+	3: 70	560 mV	-35C
+	4: 71	568 mV	-34C
+LED Temps
+	1: 70	560 mV	-35C
+	2: 70	560 mV	-35C
+Pet watchdogPet wat560 mV	-35C
+	4: 71	568 mV	-34C
+LED Temps
+	1: 70	560 mV	-35C
+	2: 70	560 mV	-35C
+	3: 70	560 mV	-35C
+	4: 71	568 mV	-34C
+lifepo bat temps
+	1: 71	568 mV	-34 C
+	2: 71	568 mV	-34 C
+lifepo bat temps
+	1: 71	568 mV	-34 C
+	2: 71	568 mV	-34 C
+lifepo bat temps
+	1: 70	560 mV	-35 C
+	2: 71	560 mV	-34 C
+lifepo bat temps
+	1: 70	560 mV	-35 C
+	2: 71	560 mV	-34 C
+lifepo bat temps
+	1: 70	560 mV	-35 C
+	2: 71	560 mV	-34 C
+lifepo bat temps
+	1: 70	560 mV	-35 C
+	2: 71	560 mV	-34 C
+lifepo bat temps
+	1: 70	560 mV	-35 C
+	2: 71	560 mV	-34 C
+	LFB1SNS: 0	960 mV	-1000 mA
+	LFB1OSNS: 0	0 mV	0 mA
+	LFB2SNS: 0	960 mV	-950 mA
+	LFB2OSNS: 0	0 mV	0 mA
+
+	LFB1SNS: 0	960 mV	-1000 mA
+	LFB1OSNS: 0	0 mV	0 mA
+	LFB2SNS: 0	960 mV	-950 mA
+	LFB2OSNS: 0	0 mV	0 mA
+
+	LFB1SNS: 0	960 mV	-1000 mA
+	LFB1OSNS: 0	0 mV	0 mA
+	LFB2SNS: 0	960 mV	-950 mA
+	LFB2OSNS: 0	0 mV	0 mA
+
+	LFB1SNS: 0	960 mV	-1000 mA
+	LFB1OSNS: 0	0 mV	0 mA
+	LFB2SNS: 0	960 mV	-950 mA
+	LFB2OSNS: 0	0 mV	0 mA
+
+	LFB1SNS: 0	960 mV	-1000 mA
+	LFB1OSNS: 0	0 mV	0 mA
+	LFB2SNS: 0	960 mV	-950 mA
+	LFB2OSNS: 0	0 mV	0 mA
+
+	LFB1SNS: 0	960 mV	-1000 mA
+	LFB1OSNS: 0	0 mV	0 mA
+	LFB2SNS: 0	960 mV	-950 mA
+	LFB2OSNS: 0	0 mV	0 mA
+
+	LFB1SNS: 0	960 mV	-1000 mA
+	LFB1OSNS: 0	0 mV	0 mA
+	LFB2SNS: 0	960 mV	-950 mA
+	LFB2OSNS: 0	0 mV	0 mA
+
+lifepo volts
+	LF1REF: 167	3053 mV
+	LF2REF: 157	2870 mV
+	LF3REF: 177	3236 mV
+	LF4REF: 157	2870 mV
+lifepo volts
+	LF1REF: 164	2998 mV
+	LF2REF: 157	2870 mV
+	LF3REF: 178	3254 mV
+	LF4REF: 157	2870 mV
+lifepo volts
+	LF1REF: 167	3053 mV
+	LF2REF: 156	2852 mV
+	LF3REF: 177	3236 mV
+	LF4REF: 156	2852 mV
+lifepo volts
+	LF1REF: 165	3017 mV
+	LF2REF: 158	2889 mV
+	LF3REF: 179	3273 mV
+	LF4REF: 157	2870 mV
+lifepo volts
+	LF1REF: 162	2962 mV
+	LF2REF: 157	2870 mV
+	LF3REF: 177	3236 mV
+	LF4REF: 157	2870 mV
+lifepo volts
+	LF1REF: 164	2998 mV
+	LF2REF: 156	2852 mV
+	LF3REF: 179	3273 mV
+	LF4REF: 157	2870 mV
+lifepo volts
+	LF1REF: 165	3017 mV
+	LF2REF: 158	2889 mV
+	LF3REF: 183	3346 mV
+	LF4REF: 156	2852 mV
+led current
+	LED1SNS: 10	3 mV	100 mA
+	LED2SNS: 10	3 mV	100 mA
+	LED3SNS: 5	1 mV	33 mA
+	LED4SNS: 7	2 mV	66 mA
+led current
+	LED1SNS: 7	2 mV	66 mA
+	LED2SNS: 7	2 mV	66 mA
+	LED3SNS: 5	1 mV	33 mA
+	LED4SNS: 7	2 mV	66 mA
+led current
+	LED1SNS: 10	3 mV	100 mA
+	LED2SNS: 7	2 mV	66 mA
+	LED3SNS: 5	1 mV	33 mA
+	LED4SNS: 10	3 mV	100 mA
+led current
+	LED1SNS: 10	3 mV	100 mA
+	LED2SNS: 7	2 mV	66 mA
+	LED3SNS: 5	1 mV	33 mA
+	LED4SNS: 10	3 mV	100 mA
+led current
+	LED1SNS: 7	2 mV	66 mA
+	LED2SNS: 7	2 mV	66 mA
+	LED3SNS: 5	1 mV	33 mA
+	LED4SNS: 10	3 mV	100 mA
+led current
+	LED1SNS: 10	3 mV	100 mA
+	LED2SNS: 7	2 mV	66 mA
+	LED3SNS: 5	1 mV	33 mA
+	LED4SNS: 7	2 mV	66 mA
+led current
+	LED1SNS: 7	2 mV	66 mA
+	LED2SNS: 10	3 mV	100 mA
+	LED3SNS: 2	0 mV	0 mA
+	LED4SNS: 10	3 mV	100 mA
+gyro
+	x: 127	-238
+	y: 127	-238
+	z: 128	18
+gyro
+	x: 127	-238
+	y: 127	-238
+	z: 128	18
+gyro
+	x: 127	-238
+	y: 127	-238
+	z: 128	18
+gyro
+	x: 127	-238
+	y: 127	-238
+	z: 128	18
+gyro
+	x: 127	-238
+	y: 127	-238
+	z: 128	18
+gyro
+	x: 127	-238
+	y: 127	-238
+	z: 128	18
+gyro
+	x: 127	-238
+	y: 127	-238
+	z: 128	18
+---------END LED BURST Data---------
+
+----Raw Hex Data----
+
+574c39585a45d36b00002297323b03e3dc5b5547472855f0e1b8b29eb3474747474747474746474747464646474646474746474747464646474747474746474647464746474647ff000000000000000000000000000000000000000000000000000000a59db29da69db39da79cb09ea59eb09da69db29da49db39da69db29d070a020a0707050a070a050a0707050a070a02070707020a0707050a7f7f807f7f807f7f807f7f807f7f807f7f807f7f80d56b00002643009c1fff9c1cff9c20ff9c1bff9c1dff9c1aff9c1eff9c19ff263c01d64c019c1f019c1c019c200100b113eb92ebab70e5d6e24a74a82e3b3411f20fbd1ac8a54f6aac3c57e5a127a8
+
+=======End Sample Transmission=======
+Transmitted 255 bytes
+
+=======
+RADIO CURRENT: 1289 mA
+=======
+=========Sample Transmission=========
+type: FLASH_CMP_DATA
+
+----Data Summary----
+timestamp: 	27603
+sat state: 	IDLE_FLASH
+reboot #:  	3
+num errors:	50
+
+
+============Current Data============
+secs to next flash: 59
+reboot count: 3
+L1_REF: 227 4150 mV
+L2_REF: 220 4022 mV
+L1_SNS: 91 1014 mV	58 mA
+L2_SNS: 85 938 mV	-94 mA
+L1_TEMP: 71	568 mV	-34 C
+L2_TEMP: 71	568 mV	 -34 C
+refs: PANELREF: 40 1706 mV	8794 mV
+L_REF: 85 1554 mV	4086 mV
+---Battery Charging Digital Signals---
+L1_RUN_CHG:     0
+L2_RUN_CHG:     0
+LF_B1_RUN_CHG:  0
+LF_B2_RUN_CHG:  0
+LF_B2_CHGN:     1
+LF_B2_FAULTN:   1
+LF_B1_FAULTN:   1
+LF_B1_CHGN:     1
+L2_ST:          1
+L1_ST:          0
+L1_DISG:        0
+L2_DISG:        0
+L1_CHGN:        0
