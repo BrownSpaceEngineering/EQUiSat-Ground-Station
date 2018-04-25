@@ -441,7 +441,7 @@ def parse_packet(ps):
 	num_errors = packet['preamble']['num_errors']
 	packet['errors'] = parse_errors(ps, num_errors, message_type)
 	packet_JSON = json.dumps(packet, indent=4)
-	print(packet_JSON)
+	return packet_JSON
 
 def find_packets(file):
 	with open(file, 'r') as f:
@@ -462,12 +462,12 @@ def main():
 	lp2 = "574c39585a45f60b00002c960eff01b7c5585904040057e8ffe7e747471eb8c5585904040057e8f6a839a839a439ac39b739a4397f7f80f50b00001ec1c5585804040058e8f6a839a839a339a939ba39a4397f7f80e10b00001eb8c5585904040057e8f6a839a839a439ac39b739a4397f7f80f50b00001ec1c5585804040058e8f6a839a839a339a939ba39a4397f7f80e10b00001ecbc5585804040057e8f6a439a439a339a839ba39a0397f7f80cd0b00009b30079b31079c3107254607a73307a72907364e08b44c08ab34083b4b080815089b1aff9b2bff9b2aff00000000000000000000000000000000000000000000000000000000000000000000"
 
 	if (len(sys.argv) < 2):
-		parse_packet(fb2)
+		print(parse_packet(fb2))
 	else:
 		for x in sys.argv[1:]:
 			packets = find_packets(x)
 			for packet in packets:
-				parse_packet(packet)
+				print(parse_packet(packet))
 
 if __name__ == "__main__":
     main()
