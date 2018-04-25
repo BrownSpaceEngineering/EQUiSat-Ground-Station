@@ -1,6 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include "ecc.h"
+#include "rscode1.3/ecc.h"
 
 //int erasures[16];
 //int nerasures = 0;

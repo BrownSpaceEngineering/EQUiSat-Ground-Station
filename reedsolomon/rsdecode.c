@@ -1,6 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include "ecc.h"
+#include "rscode1.3/ecc.h"
 
 int main (int argc, char *argv[]) {
 	if (argc != 4) {

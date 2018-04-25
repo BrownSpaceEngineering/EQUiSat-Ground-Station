@@ -19,10 +19,10 @@ LDFLAGS = $(OPTIMIZE_FLAGS) $(DEBUG_FLAGS)
 
 LIB_CSRC = rs.c galois.c berlekamp.c crcgen.c 
 LIB_HSRC = ecc.h
-LIB_OBJS = rscode1.3/rs.o rscode1.3/galois.o rscode1.3/berlekamp.o rscode1.3/crcgen.o 
+LIB_OBJS = rs.o galois.o berlekamp.o crcgen.o 
 
 TARGET_LIB = libecc.a
-TEST_PROGS =rsdecode rsencode
+TEST_PROGS =
 
 TARGETS = $(TARGET_LIB) $(TEST_PROGS)
 
@@ -32,12 +32,6 @@ $(TARGET_LIB): $(LIB_OBJS)
 	$(RM) $@
 	$(AR) cq $@ $(LIB_OBJS)
 	if [ "$(RANLIB)" ]; then $(RANLIB) $@; fi
-
-rsdecode: rsdecode.o rscode1.3/galois.o rscode1.3/berlekamp.o rscode1.3/crcgen.o rscode1.3/rs.o
-	gcc -o rsdecode rsdecode.o -L. -lecc
-
-rsencode: rsencode.o rscode1.3/galois.o rscode1.3/berlekamp.o rscode1.3/crcgen.o rscode1.3/rs.o
-	gcc -o rsencode rsencode.o -L. -lecc
 
 clean:
 	rm -f *.o example libecc.a
