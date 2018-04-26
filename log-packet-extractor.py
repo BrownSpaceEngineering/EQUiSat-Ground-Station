@@ -2,20 +2,23 @@
 # Script to extract hex packets from a log file dumped by EQUiSatOS in with the PRINT_HEX_TRANSMISSIONS flag defined.
 import sys
 import csv
+import re
 import packetparse
+import groundstation
 
-CALLSIGN_HEX = "574c39585a" # WL9XZE
-PACKET_STR_LEN = 2*255 # two hex char per byte
-WRITE_PARSED = True
+WRITE_PARSED = False
 
-def extract_packet(line):
-    """ Pulls a packet from the given line, assuming the callsign bytes were found. """
-    packet_start = line.index(CALLSIGN_HEX)
-    packet = line[packet_start:]
-    if len(packet)-1 == PACKET_STR_LEN: # ignore newline
-        return packet # probably a valid packet
-    else:
-        return ""
+def check_line_for_packets(line, outwriter):
+    packets = groundstation.extract_packets(line)
+    for packet in packets:
+        # parse too if asked
+        parsed = ""
+        if WRITE_PARSED:
+            parsed = packetparse.parse_packet(packet)
+
+        outwriter.writerow([packet, parsed])
+
+    return len(packets)
 
 def parse_packets(filename, outfile):
     num_found = 0
@@ -26,18 +29,8 @@ def parse_packets(filename, outfile):
                 line = log.readline()
                 if line == "":
                     return num_found
-                elif CALLSIGN_HEX in line:
-                    packet = extract_packet(line)
-                    if packet != "":
-                        # remove newline
-                        packet = packet[:PACKET_STR_LEN]
-                        # parse too if asked
-                        parsed = ""
-                        if WRITE_PARSED:
-                            parsed = packetparse.parse_packet(packet)
-
-                        outwriter.writerow([packet, parsed])
-                        num_found += 1
+                else:
+                    num_found += check_line_for_packets(line, outwriter)
 
 def main():
     if len(sys.argv) != 3:
