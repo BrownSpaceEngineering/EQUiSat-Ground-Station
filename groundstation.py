@@ -35,8 +35,10 @@ def send_packet(raw, corrected, route=PACKET_PUB_ROUTE):
     #requests.post(route, json=json) # TODO: don't wanna spam
 
 def correct_packet(raw):
-    """ Calls Reed-Solomon error correcting scripts to apply parity byte corrections to the given raw packet """
-    return rscode.decode(raw)
+    """ Calls Reed-Solomon error correcting scripts to apply parity byte corrections to the given raw HEX packet """
+    # should always contain an even number of hex chars
+    raw_bin = unhexlify(raw)
+    return hexlify(rscode.decode(raw_bin))
 
 def extract_packets(buf):
     """ Attempts to find and extract full packets from the given buffer based on callsign matching.
@@ -46,6 +48,9 @@ def extract_packets(buf):
     return packets, indexes
 
 def scan_for_packets(buf):
+    """ Scans for raw HEX packets in the given buffer and sends any found
+        to a server. Also trims the buffer before the end of the last packet.
+    """
     packets, indexes = extract_packets(buf)
     if len(packets) == 0:
         return buf
@@ -53,8 +58,8 @@ def scan_for_packets(buf):
     # error correct and send packets to API
     for raw in packets:
         print("found packet, correcting & sending...")
-        raw_bin = unhexlify(raw) # should always contain an even number of hex chars
-        corrected = hexlify(correct_packet(raw_bin))
+        corrected = correct_packet(raw)
+        print("raw:\n%s \ncorrected:\n%s" % (raw, corrected))
         send_packet(raw, corrected)
 
     # trim buffer so it starts right past the end of last parsed packet
