@@ -6,10 +6,14 @@ import os
 import re
 import serial
 from binascii import hexlify
+import requests
+import groundstation_config as config
+
+# TODO: logging
 
 # config
 SERIAL_PORT = "/dev/ttyAMA0"
-PACKET_PUB_ROUTE = "api.brownspace.org/equisat/receive_data"
+PACKET_PUB_ROUTE = "http://api.brownspace.org/equisat/receive_data"
 CALLSIGN_HEX = "574c39585a" # WL9XZE
 PACKET_STR_LEN = 2*255 # two hex char per byte
 MAX_BUF_SIZE = 4096
@@ -24,8 +28,9 @@ test_file = "./Test Dumps/test_packet_logfile.txt"
 
 def send_packet(raw, corrected, route=PACKET_PUB_ROUTE):
     """ Sends a POST request to the given API route to publish the packet. """
-    # TODO
-    pass
+    json = {"raw": raw, "corrected": corrected, \
+            "station_id": config.station_id, "station_name": config.station_name }
+    #requests.post(route, json=json) # TODO: don't wanna spam
 
 def correct_packet(raw):
     """ Calls Reed-Solomon error correcting scripts to apply parity byte corrections to the given raw packet """
