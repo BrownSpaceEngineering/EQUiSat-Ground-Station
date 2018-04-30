@@ -13,12 +13,12 @@ int main (int argc, char *argv[]) {
   	}
 
   	unsigned char* msg = (unsigned char*) argv[1];
-  	int msgLength = atoi(argv[2]);  
+  	int msgLength = atoi(argv[2]);
 
   	/* Initialization the ECC library */
     initialize_ecc ();
 
-	/* Encode data into codeword, adding NPAR parity bytes */	
+	/* Encode data into codeword, adding NPAR parity bytes */
     encode_data(msg, msgLength, codeword);
     printf("%s", codeword);
 }

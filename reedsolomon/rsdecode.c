@@ -20,7 +20,7 @@ int main (int argc, char *argv[]) {
 
   	/* check if syndrome is all zeros */
   	if (check_syndrome () != 0) {
-  		correct_errors_erasures (codeword, msgLength, 0, NULL);  		
+  		correct_errors_erasures (codeword, msgLength, 0, NULL);
   		printf("%.*s", msgLength - num_parity_bytes, codeword);
   	}
 }

@@ -15,7 +15,7 @@ CC = gcc
 # OPTIMIZE_FLAGS = -O69
 DEBUG_FLAGS = -g
 CFLAGS = -Wall -Wstrict-prototypes  $(OPTIMIZE_FLAGS) $(DEBUG_FLAGS) -I..
-LDFLAGS = $(OPTIMIZE_FLAGS) $(DEBUG_FLAGS)
+LDFLAGS = -fPIC $(OPTIMIZE_FLAGS) $(DEBUG_FLAGS) -L. -lecc 
 
 LIB_CSRC = rs.c galois.c berlekamp.c crcgen.c 
 LIB_HSRC = ecc.h
@@ -30,15 +30,14 @@ all: $(TARGETS)
 
 $(TARGET_LIB): $(LIB_OBJS)
 	$(RM) $@
-	$(AR) cq $@ $(LIB_OBJS)
+	$(AR) cq $@ $(LIB_OBJS) -fPIC
 	if [ "$(RANLIB)" ]; then $(RANLIB) $@; fi
 
 rsdecode: rsdecode.o rscode1.3/galois.o rscode1.3/berlekamp.o rscode1.3/crcgen.o rscode1.3/rs.o
-	gcc -o rsdecode rsdecode.o -L. -lecc
+	gcc $(CFLAGS) -o rsdecode rsdecode.o $(LDFLAGS)
 
 rsencode: rsencode.o rscode1.3/galois.o rscode1.3/berlekamp.o rscode1.3/crcgen.o rscode1.3/rs.o
-	gcc -o rsencode rsencode.o -L. -lecc
-
+	gcc $(CFLAGS) -o rsencode rsencode.o $(LDFLAGS) 
 clean:
 	rm -f *.o example libecc.a
 	rm -f *~

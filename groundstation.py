@@ -5,9 +5,11 @@
 import os
 import re
 import serial
-from binascii import hexlify
+import traceback
+from binascii import hexlify, unhexlify
 import requests
 import groundstation_config as config
+from reedsolomon import rscode
 
 # TODO: logging
 
@@ -34,8 +36,7 @@ def send_packet(raw, corrected, route=PACKET_PUB_ROUTE):
 
 def correct_packet(raw):
     """ Calls Reed-Solomon error correcting scripts to apply parity byte corrections to the given raw packet """
-    # TODO
-    return ""
+    return rscode.decode(raw)
 
 def extract_packets(buf):
     """ Attempts to find and extract full packets from the given buffer based on callsign matching.
@@ -52,7 +53,8 @@ def scan_for_packets(buf):
     # error correct and send packets to API
     for raw in packets:
         print("found packet, correcting & sending...")
-        corrected = correct_packet(raw)
+        raw_bin = unhexlify(raw) # should always contain an even number of hex chars
+        corrected = hexlify(correct_packet(raw_bin))
         send_packet(raw, corrected)
 
     # trim buffer so it starts right past the end of last parsed packet
@@ -106,6 +108,7 @@ def mainloop(ser_input=None, file_input=None):
             break
         except Exception, e:
             print("EXCEPTION: %s" % e)
+            print(traceback.format_exc())
             continue
 
 if __name__ == "__main__":

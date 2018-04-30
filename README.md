@@ -3,6 +3,13 @@ Scripts and utilities to run on a Raspberry Pi for parsing and processing packet
 
 See [brownspace.org](brownspace.org) for more information
 
+## Building
+The ReedSolomon C library we use must be built from source. To do so, run:
+```
+    cd reedsolomon/
+    make
+```
+
 ## Components
 - `groundstation.py` - primary groundstation loop script for receiving and publishing transmissions
 - `log-packet-extractor.py` - simple utility to extract sample packets from testing dumps
