@@ -16,7 +16,10 @@ def get_bit(byte,i):
     return 1 if ((byte&(1<<i))!=0) else  0
 
 def hex_to_int_le(hexstr):
-	return unpack('<i', unhexlify(hexstr))[0]
+	try:
+		return unpack('<i', unhexlify(hexstr))[0]
+	except TypeError:
+		return -1
 
 def left_shift_8(byte):
 	return byte << 8
@@ -66,6 +69,14 @@ def get_message_type(val):
 		4:	'LOW_POWER'
 	}[val]
 
+def is_hex_str(ps):
+	""" Returns whether the packet is only hexedecimal data """
+	try:
+		int(ps, 16)
+		return True
+	except ValueError:
+		return False
+
 def parse_preamble(ps):
 	preamble = {}
 	preamble['callsign'] = ps[0:12].decode("hex")
@@ -77,8 +88,17 @@ def parse_preamble(ps):
 
 	preamble['SPF_ST'] = str(get_bit(msg_op_states, 6))
 	preamble['MRAM_CPY'] = str(get_bit(msg_op_states, 7))
-	preamble['bytes_of_data'] = int(ps[22:24], 16)
-	preamble['num_errors'] = int(ps[24:26], 16)
+
+	try:
+		preamble['bytes_of_data'] = int(ps[22:24], 16)
+	except ValueError:
+		preamble['bytes_of_data'] = -1
+
+	try:
+		preamble['num_errors'] = int(ps[24:26], 16)
+	except ValueError:
+		preamble['num_errors'] = -1
+
 	return preamble
 
 def parse_current_info(ps):
@@ -449,8 +469,8 @@ def parse_packet(ps):
 	packet['preamble'] = parse_preamble(ps)
 	packet['current_info'] = parse_current_info(ps)
 	message_type = packet['preamble']['message_type']
-	packet['data'] = parse_data_section(message_type, ps)	
-	num_errors = packet['preamble']['num_errors']	
+	packet['data'] = parse_data_section(message_type, ps)
+	num_errors = packet['preamble']['num_errors']
 	packet['errors'] = parse_errors(ps, message_type)
 	packet_JSON = json.dumps(packet, indent=4)
 	return packet_JSON

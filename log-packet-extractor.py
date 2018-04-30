@@ -6,17 +6,26 @@ import re
 import packetparse
 import groundstation
 
-WRITE_PARSED = False
+WRITE_PARSED = True
+CSV_HEADERS = ["packet", "valid (only hex chars)", "parsed timestamp", "parsed message type", "parsed sat state", "full parsed JSON"]
 
 def check_line_for_packets(line, outwriter):
-    packets = groundstation.extract_packets(line)
+    packets, _ = groundstation.extract_packets(line)
     for packet in packets:
+        # whether valid
+        valid = packetparse.is_hex_str(packet)
+
+        # grab some metadata
+        preamble = {"timestamp": -1, "message_type": "[corrupted]", "satellite_state": "[corrupted]"}
+        if valid:
+            preamble = packetparse.parse_preamble(packet)
+
         # parse too if asked
         parsed = ""
-        if WRITE_PARSED:
+        if WRITE_PARSED and valid:
             parsed = packetparse.parse_packet(packet)
 
-        outwriter.writerow([packet, parsed])
+        outwriter.writerow([packet, valid, preamble["timestamp"], preamble["message_type"], preamble["satellite_state"], parsed])
 
     return len(packets)
 
@@ -25,6 +34,8 @@ def parse_packets(filename, outfile):
     with open(filename, "r") as log:
         with open(outfile, "w") as out:
             outwriter = csv.writer(out)
+            outwriter.writerow(CSV_HEADERS)
+
             while True:
                 line = log.readline()
                 if line == "":
