@@ -3,7 +3,7 @@
 import sys
 import csv
 import re
-import packetparse
+from packetparse import packetparse
 import groundstation
 
 WRITE_PARSED = True
