@@ -6,6 +6,7 @@ import os
 import re
 import serial
 import traceback
+import time
 from binascii import hexlify, unhexlify
 import requests
 import groundstation_config as config
@@ -114,6 +115,7 @@ def mainloop(ser_input=None, file_input=None):
         except Exception, e:
             print("EXCEPTION: %s" % e)
             print(traceback.format_exc())
+            time.sleep(5)
             continue
 
 if __name__ == "__main__":

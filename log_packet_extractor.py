@@ -45,7 +45,7 @@ def parse_packets(filename, outfile):
 
 def main():
     if len(sys.argv) != 3:
-        print("usage: ./log-packet-extractor.py <log file> <output csv>")
+        print("usage: ./log_packet_extractor.py <log file> <output csv>")
     else:
         num_found = parse_packets(sys.argv[1], sys.argv[2])
         print("Found %d packets" % num_found)
