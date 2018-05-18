@@ -11,6 +11,7 @@ from binascii import hexlify, unhexlify
 import requests
 import groundstation_config as config
 from reedsolomon import rscode
+import packetparse
 
 # TODO: logging
 
@@ -29,10 +30,10 @@ TEST_FILE_READ_SIZE = PACKET_STR_LEN/2
 test_file = "./Test Dumps/test_packet_logfile.txt"
 
 
-def send_packet(raw, corrected, route=PACKET_PUB_ROUTE):
+def send_packet(raw, corrected, parsed, route=PACKET_PUB_ROUTE):
     """ Sends a POST request to the given API route to publish the packet. """
-    json = {"raw": raw, "corrected": corrected, \
-            "station_id": config.station_id, "station_name": config.station_name }
+    json = {"raw": raw, "corrected": corrected, "transmission": parsed, \
+            "secret": config.station_secret, "station_name": config.station_name }
     #requests.post(route, json=json) # TODO: don't wanna spam
 
 def correct_packet(raw):
@@ -60,8 +61,9 @@ def scan_for_packets(buf):
     for raw in packets:
         print("found packet, correcting & sending...")
         corrected = correct_packet(raw)
-        print("raw:\n%s \ncorrected:\n%s" % (raw, corrected))
-        send_packet(raw, corrected)
+        parsed = packetparse.parse_packet(corrected)
+        print("raw:\n%s \ncorrected:\n%s \nparsed:\n%s" % (raw, corrected, parsed))
+        send_packet(raw, corrected, parsed)
 
     # trim buffer so it starts right past the end of last parsed packet
     lastindex = indexes[len(indexes)-1]
