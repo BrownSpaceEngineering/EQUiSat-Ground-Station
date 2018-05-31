@@ -25,7 +25,7 @@ int main (int argc, char *argv[]) {
     /* Initialization the ECC library */
     initialize_ecc();
 
-    /* Decode string -- encoded codeword size must be passed */
+    /* Decode string -- codeword size must be passed */
     decode_data(codeword, codewordLength);
 
     /* check if syndrome is all zeros */

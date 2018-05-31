@@ -11,7 +11,7 @@ from binascii import hexlify, unhexlify
 import requests
 import groundstation_config as config
 from reedsolomon import rscode
-import packetparse
+from packetparse import packetparse
 
 # TODO: logging
 
@@ -30,17 +30,13 @@ TEST_FILE_READ_SIZE = PACKET_STR_LEN/2
 test_file = "./Test Dumps/test_packet_logfile.txt"
 
 
-def send_packet(raw, corrected, parsed, route=PACKET_PUB_ROUTE):
+def send_packet(raw, corrected, parsed, errors_corrected, route=PACKET_PUB_ROUTE):
     """ Sends a POST request to the given API route to publish the packet. """
     json = {"raw": raw, "corrected": corrected, "transmission": parsed, \
-            "secret": config.station_secret, "station_name": config.station_name }
+            "secret": config.station_secret, "station_name": config.station_name, \
+            "errors_corrected": errors_corrected }
     #requests.post(route, json=json) # TODO: don't wanna spam
 
-def correct_packet(raw):
-    """ Calls Reed-Solomon error correcting scripts to apply parity byte corrections to the given raw HEX packet """
-    # should always contain an even number of hex chars
-    raw_bin = unhexlify(raw)
-    return hexlify(rscode.decode(raw_bin))
 
 def extract_packets(buf):
     """ Attempts to find and extract full packets from the given buffer based on callsign matching.
@@ -60,10 +56,20 @@ def scan_for_packets(buf):
     # error correct and send packets to API
     for raw in packets:
         print("found packet, correcting & sending...")
-        corrected = correct_packet(raw)
-        parsed = packetparse.parse_packet(corrected)
-        print("raw:\n%s \ncorrected:\n%s \nparsed:\n%s" % (raw, corrected, parsed))
-        send_packet(raw, corrected, parsed)
+        corrected, error = rscode.decode(raw)
+        errors_corrected = error == None
+
+        # parse if was corrected
+        parsed = {}
+        if errors_corrected:
+            parsed, err = packetparse.parse_packet(corrected)
+            if err != None:
+                print("error parsing packet: %s" % err)
+
+        # post packet to API
+        print("raw:\n%s \ncorrected (len: %d, actually corrected: %r, error: %s):\n%s \nparsed:\n%s" \
+            % (raw, len(corrected), errors_corrected, error, corrected, parsed))
+        send_packet(raw, corrected, parsed, errors_corrected)
 
     # trim buffer so it starts right past the end of last parsed packet
     lastindex = indexes[len(indexes)-1]
