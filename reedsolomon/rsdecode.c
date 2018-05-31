@@ -1,26 +1,46 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include "rscode1.3/ecc.h"
+#include "hex_strings.h"
 
 int main (int argc, char *argv[]) {
-	if (argc != 4) {
-  		printf("Usage: rsdecode <encoded_msg> <encoded_msg_length> <num_parity_bytes>\n");
-  		return 0;
-  	}
+    if (argc != 4) {
+        printf("Usage: rsdecode <encoded hex msg> <encoded hex msg length> <num parity bytes>\n");
+        return 0;
+    }
 
-  	unsigned char* codeword = (unsigned char*)argv[1];
-  	int msgLength = atoi(argv[2]);
-  	int num_parity_bytes = atoi(argv[3]);
+    char* hexCodeword = argv[1];
+    int hexCodewordLength = atoi(argv[2]);
+    int codewordLength = hexCodewordLength/2;
+    int numParityBytes = atoi(argv[3]);
 
-  	/* Initialization the ECC library */
-  	initialize_ecc ();
+    /* convert hex string to raw data */
+    unsigned char codeword[codewordLength];
+    int success = hex_str_to_raw(hexCodeword, hexCodewordLength, codeword);
+    if (!success) {
+        // hex string parse error
+        return 1;
+    }
 
-  	/* Decode string -- encoded codeword size must be passed */
-  	decode_data(codeword, msgLength);
+    /* Initialization the ECC library */
+    initialize_ecc();
 
-  	/* check if syndrome is all zeros */
-  	if (check_syndrome () != 0) {
-  		correct_errors_erasures (codeword, msgLength, 0, NULL);
-  		printf("%.*s", msgLength - num_parity_bytes, codeword);
-  	}
+    /* Decode string -- encoded codeword size must be passed */
+    decode_data(codeword, codewordLength);
+
+    /* check if syndrome is all zeros */
+    if (check_syndrome () != 0) {
+        correct_errors_erasures(codeword, codewordLength, 0, NULL);
+
+        // convert back to hex for output
+        int outputLen = codewordLength - numParityBytes;
+        char codeword_hex[2*outputLen];
+        raw_to_hex_str(codeword, outputLen, codeword_hex);
+        printf("%.*s", 2*outputLen, codeword_hex);
+        return 0;
+
+    } else {
+        // error correction error
+        return 2;
+    }
 }

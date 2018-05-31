@@ -33,11 +33,11 @@ $(TARGET_LIB): $(LIB_OBJS)
 	$(AR) cq $@ $(LIB_OBJS)
 	if [ "$(RANLIB)" ]; then $(RANLIB) $@; fi
 
-rsdecode: rsdecode.o rscode1.3/galois.o rscode1.3/berlekamp.o rscode1.3/crcgen.o rscode1.3/rs.o
-	gcc $(CFLAGS) -o rsdecode rsdecode.o $(LDFLAGS)
+rsdecode: rsdecode.o hex_strings.o rscode1.3/galois.o rscode1.3/berlekamp.o rscode1.3/crcgen.o rscode1.3/rs.o
+	gcc $(CFLAGS) -o rsdecode rsdecode.o hex_strings.o $(LDFLAGS)
 
-rsencode: rsencode.o rscode1.3/galois.o rscode1.3/berlekamp.o rscode1.3/crcgen.o rscode1.3/rs.o
-	gcc $(CFLAGS) -o rsencode rsencode.o $(LDFLAGS)
+rsencode: rsencode.o hex_strings.o rscode1.3/galois.o rscode1.3/berlekamp.o rscode1.3/crcgen.o rscode1.3/rs.o
+	gcc $(CFLAGS) -o rsencode rsencode.o hex_strings.o $(LDFLAGS)
 clean:
 	rm -f *.o example libecc.a
 	rm -f *~
