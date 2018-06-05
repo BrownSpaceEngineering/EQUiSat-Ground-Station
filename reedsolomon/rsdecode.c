@@ -30,7 +30,7 @@ int main (int argc, char *argv[]) {
     decode_data(codeword, codewordLength);
 
     /* check if syndrome is all zeros */
-    if (check_syndrome() != 0) {
+    // if (check_syndrome() != 0) {
         correct_errors_erasures(codeword, codewordLength, 0, NULL);
 
         // convert back to hex for output
@@ -40,8 +40,8 @@ int main (int argc, char *argv[]) {
         printf("%.*s", 2*outputLen, codeword_hex);
         return 0;
 
-    } else {
-        printf("unable to correct errors\n");
-        return 2;
-    }
+    // } else {
+    //     printf("unable to correct errors\n");
+    //     return 2;
+    // }
 }
