@@ -3,20 +3,21 @@
 #Instructions for enabling UART Hardware on PI 3 Pins 14&15
 #https://spellfoundry.com/2016/05/29/configuring-gpio-serial-port-raspbian-jessie-including-pi-3/
 
-import sys, time, binascii, csv, logging, serial
+import sys, time, binascii, csv, logging, serial, struct
 
 serial_port = "/dev/ttyAMA0"
 ser = serial.Serial(serial_port, 38400, timeout=None)
 
 # radio config settings
 set_dealer_mode_buf = bytearray(b'\x01\x44\x01\xba\x00')
-set_tx_freq = bytearray(b'\x01\x37\x01\x19\xf5\xf7\x30\x92\x00')
-set_rx_freq = bytearray(b'\x01\x39\x01\x19\xf5\xf7\x30\x90\x00')
+set_tx_freq = bytearray(b'\x01\x37\x01\x19\xf5\xf7\x30\x90\x00')
+set_rx_freq = bytearray(b'\x01\x39\x01\x19\xf5\xf7\x30\x8E\x00')
 set_channel = bytearray(b'\x01\x03\x01\xfb\x00')
 set_bandwidth = bytearray(b'\x01\x70\x04\x01\x8a\x00')
 set_modulation = bytearray(b'\x01\x2b\x01\xd3')
 program = bytearray(b'\x01\x1e\xe1\x00')
 delete_channel = bytearray(b'\x01\x70\x01\x01\x8d\x00')
+
 
 # uplink command responses
 RESPONSE_LEN = 9
@@ -33,21 +34,21 @@ uplinkResponses = {
 }
 
 def configRadio():
-	sendCommand("+++")
+	sendConfigCommand("+++")
 	print("Setting dealer mode")
-	sendCommand(set_dealer_mode_buf)
+	sendConfigCommand(set_dealer_mode_buf)
 	print("Setting Channel")
-	sendCommand(set_channel)
+	sendConfigCommand(set_channel)
 	print("Setting rx freq")
-	sendCommand(set_rx_freq)
+	sendConfigCommand(set_rx_freq)
 	print("Setting tx freq")
-	sendCommand(set_tx_freq)
+	sendConfigCommand(set_tx_freq)
 	print("setting bandwidth")
-	sendCommand(set_bandwidth)
+	sendConfigCommand(set_bandwidth)
 	print("setting modulation")
-	sendCommand(set_modulation)
+	sendConfigCommand(set_modulation)
 	print("programming")
-	sendCommand(program)
+	sendConfigCommand(program)
 
 def loadUplinkCommands(filename):
 	try:
@@ -61,13 +62,14 @@ def loadUplinkCommands(filename):
 		logging.error("Could not find file: " + filename)
 
 def sendConfigCommand(buf):
+	print("Sending Command: " + binascii.hexlify(data))
 	ser.write(buf)
 	oldtime = time.time()
 	while (time.time() - oldtime) < 2:
 		inwaiting = ser.in_waiting
 		if (inwaiting) > 0:
 			data = ser.read(size=inwaiting)
-			print(binascii.hexlify(data))
+			print("Response: " + binascii.hexlify(data))
 	time.sleep(0.25)
 
 def sendUplink(cmd, response):
@@ -105,6 +107,26 @@ def uplinkTests(cmds):
 	sendUplink(cmds['revive_cmd'], uplinkResponses['revive_cmd'])
 	sendUplink(cmds['flashkill_cmd'], uplinkResponses['flashkill_cmd'])
 	sendUplink(cmds['flashrevive_cmd'], uplinkResponses['flashrevive_cmd'])
+
+def getSetFreqCommandBuf(freqInHZ, channelNum, isTX):
+	#structure is [Start of Header, Command #, Channel #, Freq Byte #1, Freq Byte #2, Freq Byte #3, Freq Byte #4, checksum]
+	#Byte #1 is MSB
+	freq_bytes = bytearray.fromhex('{:4x}'.format(freqInHZ))
+	command_type_byte = bytearray(b'\x37') if isTX else bytearray(b'\x39')
+	channel_num_byte = bytearray(chr(channelNum))	
+	command_buf_payload = command_type_byte + channel_num_byte + freq_bytes 
+	checksum_byte = chr(~(sum(command_buf_payload) % 255) & 255) #checksum is sum of bytes (not including start of header) mod 0xFF, then one's complement
+	start_of_header = bytearray(b'\x01')
+	full_command_buf = start_of_header + command_buf_payload + checksum_byte + bytearray(b'\x00') #need to null terminate string
+	return full_command_buf
+
+def setRxFreq(freqInHZ, channelNum):
+	setRxCommandBuf = getSetFreqCommandBuf(freqInHZ, channelNum, False)
+	sendConfigCommand(setRxCommandBuf)
+
+def setTxFreq(freqInHZ, channelNum):
+	setTxCommandBuf = getSetFreqCommandBuf(freqInHZ, channelNum, True)
+	sendConfigCommand(setTxCommandBuf)
 
 def main():
 	cmds = loadUplinkCommands('uplink_commands.csv')
