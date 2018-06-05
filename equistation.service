@@ -1,0 +1,9 @@
+[Unit]
+Description=EQUiStation Listening Service
+
+[Service]
+ExecStart=bash /home/pi/EQUiSat-Ground-Station/groundstation_start.bash
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
