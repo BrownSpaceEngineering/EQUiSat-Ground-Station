@@ -1,24 +1,25 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include "rscode1.3/ecc.h"
 #include "hex_strings.h"
 
 int main (int argc, char *argv[]) {
-    if (argc != 4) {
-        printf("Usage: rsdecode <encoded hex msg> <encoded hex msg length> <num parity bytes>\n");
+    if (argc != 3) {
+        printf("Usage: rsdecode <encoded hex msg> <num parity bytes>\n");
         return 0;
     }
 
     char* hexCodeword = argv[1];
-    int hexCodewordLength = atoi(argv[2]);
+    int hexCodewordLength = strlen(hexCodeword);
     int codewordLength = hexCodewordLength/2;
-    int numParityBytes = atoi(argv[3]);
+    int numParityBytes = atoi(argv[2]);
 
     /* convert hex string to raw data */
     unsigned char codeword[codewordLength];
     int success = hex_str_to_raw(hexCodeword, hexCodewordLength, codeword);
     if (!success) {
-        // hex string parse error
+        printf("hex string parse error\n");
         return 1;
     }
 
@@ -29,7 +30,7 @@ int main (int argc, char *argv[]) {
     decode_data(codeword, codewordLength);
 
     /* check if syndrome is all zeros */
-    if (check_syndrome () != 0) {
+    if (check_syndrome() != 0) {
         correct_errors_erasures(codeword, codewordLength, 0, NULL);
 
         // convert back to hex for output
@@ -40,7 +41,7 @@ int main (int argc, char *argv[]) {
         return 0;
 
     } else {
-        // error correction error
+        printf("unable to correct errors\n");
         return 2;
     }
 }
