@@ -45,6 +45,15 @@ def extract_packets(buf):
     indexes = [buf.index(packet) for packet in packets]
     return packets, indexes
 
+def correct_packet_errors(raw):
+    """ Corrects the packet's error using Reed Solomon error correction
+    and the packet's parity bytes. Makes sure to avoid correcting the callsign. """
+    assert len(raw) == PACKET_STR_LEN
+    callsign = raw[:12]
+    raw_no_callsign = raw[12:] # callsign is 6 chars
+    corrected, error = rscode.decode(raw_no_callsign)
+    return callsign + corrected, error
+
 def scan_for_packets(buf):
     """ Scans for raw HEX packets in the given buffer and sends any found
         to a server. Also trims the buffer before the end of the last packet.
@@ -56,7 +65,7 @@ def scan_for_packets(buf):
     # error correct and send packets to API
     for raw in packets:
         print("found packet, correcting & sending...")
-        corrected, error = rscode.decode(raw)
+        corrected, error = correct_packet_errors(raw)
         errors_corrected = error == None
 
         # parse if was corrected
