@@ -3,7 +3,8 @@
 #Instructions for enabling UART Hardware on PI 3 Pins 14&15
 #https://spellfoundry.com/2016/05/29/configuring-gpio-serial-port-raspbian-jessie-including-pi-3/
 
-import os, sys, serial, datetime, time
+import os, sys, datetime, time
+import serial
 
 dumps_direc = "./receiveTest_dumps"
 def generate_new_outfile():

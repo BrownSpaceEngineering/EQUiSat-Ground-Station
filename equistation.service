@@ -2,7 +2,7 @@
 Description=EQUiStation Listening Service
 
 [Service]
-ExecStart=bash /home/pi/EQUiSat-Ground-Station/groundstation_start.bash
+ExecStart=bash /home/pi/EQUiSat-Ground-Station/groundstation/groundstation_start.bash
 Restart=on-failure
 
 [Install]

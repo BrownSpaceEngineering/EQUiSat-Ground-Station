@@ -9,14 +9,14 @@ import traceback
 import time
 from binascii import hexlify, unhexlify
 import requests
-import groundstation_config as config
+import groundstation_credentials as creds
+import config
 from reedsolomon import rscode
 from packetparse import packetparse
 
 # TODO: logging
 
 # config
-SERIAL_PORT = "/dev/ttyAMA0"
 PACKET_PUB_ROUTE = "http://api.brownspace.org/equisat/receive_data"
 CALLSIGN_HEX = "574c39585a" # WL9XZE
 PACKET_STR_LEN = 2*255 # two hex char per byte
@@ -29,11 +29,10 @@ USE_TEST_FILE = True
 TEST_FILE_READ_SIZE = PACKET_STR_LEN/2
 test_file = "./Test Dumps/test_packet_logfile.txt"
 
-
 def send_packet(raw, corrected, parsed, errors_corrected, route=PACKET_PUB_ROUTE):
     """ Sends a POST request to the given API route to publish the packet. """
     json = {"raw": raw, "corrected": corrected, "transmission": parsed, \
-            "secret": config.station_secret, "station_name": config.station_name, \
+            "secret": creds.station_secret, "station_name": creds.station_name, \
             "errors_corrected": errors_corrected }
     #requests.post(route, json=json) # TODO: don't wanna spam
 
@@ -99,16 +98,16 @@ def main():
             with open(test_file, "r") as f:
                 mainloop(file_input=f)
         else:
-            with serial.Serial(SERIAL_PORT, 38400, timeout=None) as ser:
-                mainloop(ser_input=ser)
+            with serial.Serial(config.SERIAL_PORT, config.SERIAL_BAUD, timeout=None) as ser:
+                mainloop(ser=ser)
     except KeyboardInterrupt:
         return
 
-def mainloop(ser_input=None, file_input=None):
+def mainloop(ser=None, file_input=None):
     data_buf = ""
     while True:
         try:
-            if ser_input is not None:
+            if ser is not None:
                 # grab all the data we can off the serial line
                 inwaiting = ser.in_waiting
                 if inwaiting > 0:
@@ -137,5 +136,4 @@ def mainloop(ser_input=None, file_input=None):
 
 if __name__ == "__main__":
     #print(trim_buffer("cats are cool", 4, 4)) # should be "cool"
-
     main()

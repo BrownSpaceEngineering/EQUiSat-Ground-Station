@@ -3,7 +3,7 @@
 import sys
 import csv
 import random
-from packetparse.packetparse import get_message_type
+from groundstation.packetparse.packetparse import get_message_type
 from log_packet_extractor import CSV_HEADERS
 
 BUF_SIZE = 128

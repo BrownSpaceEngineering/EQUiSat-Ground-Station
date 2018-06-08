@@ -3,8 +3,8 @@
 import sys
 import csv
 import re
-from packetparse import packetparse
-import groundstation
+from groundstation import groundstation
+from groundstation.packetparse import packetparse
 
 WRITE_PARSED = True
 CSV_HEADERS = ["packet", "valid (only hex chars)", "parsed timestamp", "parsed message type", "parsed sat state", "full parsed JSON"]

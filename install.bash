@@ -1,7 +1,7 @@
 # installs the EQUiSat groundstation on a RPi system
 
-# python requirements
-pip install serial
+# dependencies
+sudo apt-get install -y python-serial
 
 # systemctl startup service
 cp ./equistation.service /usr/lib/systemd/user/
