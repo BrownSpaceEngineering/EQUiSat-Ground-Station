@@ -1,6 +1,11 @@
 #!/usr/bin/python
 # Functions to configure XDL Micro settings over serial
-import sys, time, binascii, serial, struct
+import sys
+import time
+import binascii
+import serial
+import struct
+import logging
 import config
 
 # radio config settings
@@ -11,11 +16,19 @@ set_channel = bytearray(b'\x01\x03\x01\xfb\x00')
 set_bandwidth = bytearray(b'\x01\x70\x04\x01\x8a\x00')
 set_modulation = bytearray(b'\x01\x2b\x01\xd3')
 program = bytearray(b'\x01\x1e\xe1\x00')
+warm_reset = bytearray(b'\x01\x1d\x01\xe1\x00')
 delete_channel = bytearray(b'\x01\x70\x01\x01\x8d\x00')
 
-def configRadio(ser):
+def enterCommandMode(ser):
+	logging.info("Setting radio to command mode")
 	sendConfigCommand("+++", ser)
-	logging.info("Setting dealer mode")
+
+def exitCommandMode(ser):
+	logging.info("Setting radio to normal mode")
+	sendConfigCommand(warm_reset, ser)
+
+def configRadio(ser):
+	enterCommandMode(ser)
 	sendConfigCommand(set_dealer_mode_buf, ser)
 	logging.info("Setting Channel")
 	sendConfigCommand(set_channel, ser)
@@ -29,16 +42,17 @@ def configRadio(ser):
 	sendConfigCommand(set_modulation, ser)
 	logging.info("programming")
 	sendConfigCommand(program, ser)
+	exitCommandMode(ser)
 
 def sendConfigCommand(buf, ser):
-	print("Sending Command: " + binascii.hexlify(data))
+	logging.info("sending radio command: " + binascii.hexlify(buf))
 	ser.write(buf)
 	oldtime = time.time()
 	while (time.time() - oldtime) < 2:
 		inwaiting = ser.in_waiting
 		if (inwaiting) > 0:
 			data = ser.read(size=inwaiting)
-			print("Response: " + binascii.hexlify(data))
+			logging.info("got radio command response: " + binascii.hexlify(data))
 	time.sleep(0.25)
 
 def getSetFreqCommandBuf(freqInHZ, channelNum, isTX):

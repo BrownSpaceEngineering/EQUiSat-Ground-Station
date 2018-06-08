@@ -3,11 +3,10 @@ Scripts and utilities to run on a Raspberry Pi for parsing and processing packet
 
 See [brownspace.org](brownspace.org) for more information
 
-## Building
-The ReedSolomon C library we use must be built from source. To do so, run:
+## Installing
+Simply run:
 ```
-    cd reedsolomon/
-    make
+./install.bash
 ```
 
 ## Components

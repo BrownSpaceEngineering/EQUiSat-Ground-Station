@@ -6,6 +6,7 @@ import os
 import re
 import serial
 import time
+import datetime
 import logging
 from binascii import hexlify, unhexlify
 import requests
@@ -15,37 +16,46 @@ import config
 from reedsolomon import rscode
 from packetparse import packetparse
 import transmit
+import radio_control
 
-# config
+# RX config
 PACKET_PUB_ROUTE = "http://api.brownspace.org/equisat/receive_data"
 CALLSIGN_HEX = "574c39585a" # WL9XZE
 PACKET_STR_LEN = 2*255 # two hex char per byte
 MAX_BUF_SIZE = 4096
 packet_regex = re.compile("(%s.{%d})" % \
     (CALLSIGN_HEX, PACKET_STR_LEN-len(CALLSIGN_HEX)))
-
 logging.basicConfig(format='%(asctime)s %(message)s', level=logging.INFO)
 
-# testing
+# doppler correction config
+PACKET_SEND_FREQ_S = 20
+FREQ_SWITCH_TIME_WINDOW_S = 60 # how close to max elevation time to switch frequency
+
+# testing config
 USE_TEST_FILE = True
 TEST_FILE_READ_SIZE = PACKET_STR_LEN/2
 test_file = "../Test Dumps/test_packet_logfile.txt"
+
+# globals for api use, etc.
+# TODO: convert to class to deal with these
+last_data_rx = None
+last_packet_rx = None
 
 def mainloop(ser=None, file_input=None):
     rx_buf = ""
     tx_cmd_queue = [] # TODO: method to populate
     while True:
         try:
-            # sequence: try and receive data (a packet),
-            # then if we did try and send any TX commands,
-            # and then try to adjust the frequency for doppler effects
+            # try and receive data (a packet),
             rx_buf, got_packet = receive(rx_buf, ser=ser, file_input=file_input)
 
-            if got_packet: # TODO: OR "transmit constantly" option
-                rx_buf, _, _ = transmit(tx_cmd_queue, rx_buf, ser=ser, file_input=file_input)
+            if file_input == None:
+                # and if we did try and send any TX commands,
+                if got_packet: # TODO: OR "transmit constantly" option
+                    rx_buf, _, _ = transmit(tx_cmd_queue, rx_buf, ser)
 
-            if True: # "close to time of highest elevation AND not close to expected packet RX"
-                doppler_correct(ser=ser, file_input=file_input)
+                # and then try to adjust the frequency for doppler effects
+                correct_for_doppler(ser)
 
             time.sleep(0.1)
 
@@ -64,15 +74,22 @@ def receive(rx_buf, ser=None, file_input=None):
         inwaiting = ser.in_waiting
         if inwaiting > 0:
             rx_buf += hexlify(ser.read(size=inwaiting))
+            last_data_rx = datetime.datetime.now()
 
     elif file_input is not None:
         rx_buf += file_input.read(TEST_FILE_READ_SIZE)
+        last_data_rx = datetime.datetime.now()
     else:
         return False
 
     # look for (and extract/send) any packets in the buffer, trimming
     # the buffer after finding any. (Only finds full packets)
     rx_buf, got_packet = scan_for_packets(rx_buf)
+
+    # if we got a packet, update the last packet rx time to when we got data
+    if got_packet:
+        last_packet_rx = last_data_rx
+
     # also try and trim the buffer if it exceeds a max size,
     # making sure to leave at least a packet's worth of characters
     # in case one is currently coming in
@@ -80,14 +97,14 @@ def receive(rx_buf, ser=None, file_input=None):
 
     return rx_buf, got_packet
 
-def transmit(tx_cmd_queue, rx_buf, ser=None, file_input=None):
+def transmit(tx_cmd_queue, rx_buf, ser):
     """ Checks if there are any uplink commands on the queue and transmits
         them/waits for response if so.
         Returns whether anything was transmitted and whether it was successful. """
 
     if len(tx_cmd_queue) > 0:
         command = tx_cmd_queue.pop(0)
-        got_response, rx_buf = sendUplink(command["cmd"], command["response"], ser, rx_buf=rx_buf)
+        got_response, rx_buf = transmit.sendUplink(command["cmd"], command["response"], ser, rx_buf=rx_buf)
         if got_response:
             return rx_buf, True, True
         else:
@@ -96,13 +113,24 @@ def transmit(tx_cmd_queue, rx_buf, ser=None, file_input=None):
     else:
         return rx_buf, False, False
 
-def doppler_correct(ser=None, file_input=None):
+def correct_for_doppler(ser):
     """ Shifts the receive and transmit frequency of the XDL micro to compensate
         for doppler shift based on the current estimated position of the satellite.
-        Returns whether the correction was mrx_bufrx_bufade. """
-    # TODO: switch pre-programmed channels (or just set frequency)
-    pass
+        Returns whether the correction was made. """
+    highest_elevation_time = datetime.datetime.now() # TODO: get from API
+    now = datetime.datetime.now()
+    if dtime_within(now, highest_elevation_time, FREQ_SWITCH_TIME_WINDOW_S):
+        # TODO: and not close to when we expect a packet might come in
 
+        frequency_hz = int(435.55*10e6) # TODO: get from API
+        radio_control.enterCommandMode(ser)
+        # TODO: switch pre-programmed channels?
+        radio_control.setRxFreq(frequency_hz, 0)
+        radio_control.setTxFreq(frequency_hz, 0)
+        radio_control.exitCommandMode(ser)
+        return True
+
+    return False
 
 ##################################################################
 # Receive/Decode Helpers
@@ -155,13 +183,12 @@ def scan_for_packets(buf):
 
         # post packet to API
         logging.info("""publishing packet:
-            raw:
-            %s
-            corrected: (len: %d, actually corrected: %r, error: %s):
-            %s
-            parsed:
-            %s""" \
-            % (raw, len(corrected), errors_corrected, error, corrected, parsed))
+raw:
+%s
+corrected: (len: %d, actually corrected: %r, error: %s):
+%s
+parsed:
+%s""" % (raw, len(corrected), errors_corrected, error, corrected, parsed))
         publish_packet(raw, corrected, parsed, errors_corrected)
 
     # trim buffer so it starts right past the end of last parsed packet
@@ -176,6 +203,15 @@ def trim_buffer(buf, max_size, min_to_leave):
         return buf[len(buf)-min_to_leave:]
     else:
         return buf
+
+##################################################################
+# Doppler correct helpers
+##################################################################
+def dtime_within(dtime1, dtime2, window_s):
+    """ Returns whether the two datetimes are within window_s seconds of eachother """
+    dtime1_secs = (dtime1-datetime.datetime(1970,1,1)).total_seconds()
+    dtime2_secs = (dtime2-datetime.datetime(1970,1,1)).total_seconds()
+    return abs(dtime1_secs - dtime2_secs) <= window_s
 
 def main():
     try:
