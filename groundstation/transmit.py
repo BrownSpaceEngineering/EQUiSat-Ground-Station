@@ -31,30 +31,35 @@ def loadUplinkCommands(filename):
 	except (IOError):
 		logging.error("Could not find file: " + filename)
 
-def sendUplink(cmd, response, ser):
-	data = ""
+def sendUplink(cmd, response, ser, rx_buf=""):
+	""" Attempts to send uplink command and waits for a time to receive
+		the expected response. Returns whether the response was found
+		and the update rx_buf. """
 	while True:
 		oldtime = time.time()
 		ser.write(cmd)
 		while (time.time() - oldtime) < .5:
-			print("searching for response...")
+			logging.info("searching for response...")
 			inwaiting = ser.in_waiting
 			if (inwaiting) > 0:
-					data += ser.read(size=inwaiting)
+					rx_buf += ser.read(size=inwaiting)
 
+			# search for expected response in RX buffer
 			index = data.find(response)
 			if index != -1:
 				fullResponse = ""
-				if index + RESPONSE_LEN < len(data):
-					fullResponse = data[index:index+RESPONSE_LEN]
+				if index + RESPONSE_LEN < len(rx_buf):
+					fullResponse = rx_buf[index:index+RESPONSE_LEN]
 				else:
-					fullResponse = data[index:]
+					fullResponse = rx_buf[index:]
 
-				print("GOT RESPONSE: %s (%s)" % (fullResponse, \
-					":".join("{:02x}".format(ord(c)) for c in s))) # https://stackoverflow.com/a/12214880
-				return fullResponse
+				# https://stackoverflow.com/a/12214880
+				logging.info("got TX response: %s (%s)" % (fullResponse, \
+					":".join("{:02x}".format(ord(c)) for c in s)))
+				return True, rx_buf
 
 			time.sleep(.1)
+	return False, rx_buf
 
 def uplinkTests(cmds, ser):
 	sendUplink(cmds['echo_cmd'], uplinkResponses['echo_cmd'], ser)
@@ -69,9 +74,10 @@ def uplinkTests(cmds, ser):
 
 def main():
 	ser = serial.Serial(config.SERIAL_PORT, config.SERIAL_BAUD, timeout=None)
-	cmds = loadUplinkCommands('uplink_commands.csv')
+	cmds = loadUplinkCommands(config.UPLINK_COMMANDS_FILE)
 	print(cmds)
 	uplinkTests(cmds, ser)
 
 if __name__ == "__main__":
+	logging.basicConfig(level=logging.INFO)
 	main()

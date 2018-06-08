@@ -3,6 +3,9 @@
 # dependencies
 sudo apt-get install -y python-serial
 
+# reedsolomon
+make -C ./groundstation/reedsolomon
+
 # systemctl startup service
 cp ./equistation.service /usr/lib/systemd/user/
 sudo systemctl enable equistation.service

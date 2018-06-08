@@ -1,6 +1,7 @@
 #!/usr/bin/python
 # Functions to configure XDL Micro settings over serial
 import sys, time, binascii, serial, struct
+import config
 
 # radio config settings
 set_dealer_mode_buf = bytearray(b'\x01\x44\x01\xba\x00')
@@ -14,19 +15,19 @@ delete_channel = bytearray(b'\x01\x70\x01\x01\x8d\x00')
 
 def configRadio(ser):
 	sendConfigCommand("+++", ser)
-	print("Setting dealer mode")
+	logging.info("Setting dealer mode")
 	sendConfigCommand(set_dealer_mode_buf, ser)
-	print("Setting Channel")
+	logging.info("Setting Channel")
 	sendConfigCommand(set_channel, ser)
-	print("Setting rx freq")
+	logging.info("Setting rx freq")
 	sendConfigCommand(set_rx_freq, ser)
-	print("Setting tx freq")
+	logging.info("Setting tx freq")
 	sendConfigCommand(set_tx_freq, ser)
-	print("setting bandwidth")
+	logging.info("setting bandwidth")
 	sendConfigCommand(set_bandwidth, ser)
-	print("setting modulation")
+	logging.info("setting modulation")
 	sendConfigCommand(set_modulation, ser)
-	print("programming")
+	logging.info("programming")
 	sendConfigCommand(program, ser)
 
 def sendConfigCommand(buf, ser):
