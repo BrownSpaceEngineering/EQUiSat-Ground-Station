@@ -6,20 +6,6 @@
 import sys, time, binascii, csv, logging, serial, struct
 import config
 
-# uplink command responses
-RESPONSE_LEN = 9
-uplinkResponses = {
-	"echo_cmd": "ECHOCHOCO",
-	"kill3_cmd": "KILLN", # plus 4 more bytes of revive timestamp
-	"kill7_cmd": "KILLN",
-	"killf_cmd": "KILLN",
-	"flash_cmd": "FLASHING", # last byte is whether will flash
-	"reboot_cmd": "REBOOTING",
-	"revive_cmd": "REVIVING!",
-	"flashkill_cmd": "FLASHKILL",
-	"flashrevive_cmd": "FLASHREV!"
-}
-
 def loadUplinkCommands(filename):
 	try:
 		with open(filename) as file:
@@ -62,15 +48,15 @@ def sendUplink(cmd, response, ser, rx_buf=""):
 	return False, rx_buf
 
 def uplinkTests(cmds, ser):
-	sendUplink(cmds['echo_cmd'], uplinkResponses['echo_cmd'], ser)
-	sendUplink(cmds['kill3_cmd'], uplinkResponses['kill3_cmd'], ser)
-	sendUplink(cmds['kill7_cmd'], uplinkResponses['kill7_cmd'], ser)
-	sendUplink(cmds['killf_cmd'], uplinkResponses['killf_cmd'], ser)
-	sendUplink(cmds['flash_cmd'], uplinkResponses['flash_cmd'], ser)
-	sendUplink(cmds['reboot_cmd'], uplinkResponses['reboot_cmd'], ser)
-	sendUplink(cmds['revive_cmd'], uplinkResponses['revive_cmd'], ser)
-	sendUplink(cmds['flashkill_cmd'], uplinkResponses['flashkill_cmd'], ser)
-	sendUplink(cmds['flashrevive_cmd'], uplinkResponses['flashrevive_cmd'], ser)
+	sendUplink(cmds['echo_cmd'], config.UPLINK_RESPONSES['echo_cmd'], ser)
+	sendUplink(cmds['kill3_cmd'], config.UPLINK_RESPONSES['kill3_cmd'], ser)
+	sendUplink(cmds['kill7_cmd'], config.UPLINK_RESPONSES['kill7_cmd'], ser)
+	sendUplink(cmds['killf_cmd'], config.UPLINK_RESPONSES['killf_cmd'], ser)
+	sendUplink(cmds['flash_cmd'], config.UPLINK_RESPONSES['flash_cmd'], ser)
+	sendUplink(cmds['reboot_cmd'], config.UPLINK_RESPONSES['reboot_cmd'], ser)
+	sendUplink(cmds['revive_cmd'], config.UPLINK_RESPONSES['revive_cmd'], ser)
+	sendUplink(cmds['flashkill_cmd'], config.UPLINK_RESPONSES['flashkill_cmd'], ser)
+	sendUplink(cmds['flashrevive_cmd'], config.UPLINK_RESPONSES['flashrevive_cmd'], ser)
 
 def main():
 	ser = serial.Serial(config.SERIAL_PORT, config.SERIAL_BAUD, timeout=None)

@@ -10,7 +10,7 @@ WRITE_PARSED = True
 CSV_HEADERS = ["packet", "valid (only hex chars)", "parsed timestamp", "parsed message type", "parsed sat state", "full parsed JSON"]
 
 def check_line_for_packets(line, outwriter):
-    packets, _ = groundstation.extract_packets(line)
+    packets, _ = groundstation.EQUiStation.extract_packets(line)
     for packet in packets:
         # whether valid
         valid = packetparse.is_hex_str(packet)
