@@ -21,30 +21,33 @@ delete_channel = bytearray(b'\x01\x70\x01\x01\x8d\x00')
 
 def enterCommandMode(ser):
 	logging.info("Setting radio to command mode")
-	sendConfigCommand("+++", ser)
+	return sendConfigCommand(ser, "+++")
 
 def exitCommandMode(ser):
 	logging.info("Setting radio to normal mode")
-	sendConfigCommand(warm_reset, ser)
+	return sendConfigCommand(ser, warm_reset)
 
 def configRadio(ser):
 	enterCommandMode(ser)
-	sendConfigCommand(set_dealer_mode_buf, ser)
+	sendConfigCommand(ser, set_dealer_mode_buf)
 	logging.info("Setting Channel")
-	sendConfigCommand(set_channel, ser)
+	sendConfigCommand(ser, set_channel)
 	logging.info("Setting rx freq")
-	sendConfigCommand(set_rx_freq, ser)
+	sendConfigCommand(ser, set_rx_freq)
 	logging.info("Setting tx freq")
-	sendConfigCommand(set_tx_freq, ser)
+	sendConfigCommand(ser, set_tx_freq)
 	logging.info("setting bandwidth")
-	sendConfigCommand(set_bandwidth, ser)
+	sendConfigCommand(ser, set_bandwidth)
 	logging.info("setting modulation")
-	sendConfigCommand(set_modulation, ser)
+	sendConfigCommand(ser, set_modulation)
 	logging.info("programming")
-	sendConfigCommand(program, ser)
+	sendConfigCommand(ser, program)
 	exitCommandMode(ser)
 
-def sendConfigCommand(buf, ser):
+def sendConfigCommand(ser, buf):
+	""" Sends the given config command to the radio over the given serial line.
+	Returns all data recieved over RX in case radio wasn't in command mode and for testing """
+	rx_buf = ""
 	logging.info("sending radio command: " + binascii.hexlify(buf))
 	ser.write(buf)
 	oldtime = time.time()
@@ -52,13 +55,16 @@ def sendConfigCommand(buf, ser):
 		inwaiting = ser.in_waiting
 		if (inwaiting) > 0:
 			data = ser.read(size=inwaiting)
+			rx_buf += data
 			logging.info("got radio command response: " + binascii.hexlify(data))
-	time.sleep(0.25)
+		time.sleep(0.25)
+	return rx_buf
 
 def getSetFreqCommandBuf(freqInHZ, channelNum, isTX):
 	#structure is [Start of Header, Command #, Channel #, Freq Byte #1, Freq Byte #2, Freq Byte #3, Freq Byte #4, checksum]
 	#Byte #1 is MSB
-	freq_bytes = bytearray.fromhex('{:4x}'.format(freqInHZ))
+	freq_in_hex = '{:4x}'.format(freqInHZ).replace(" ", "0")[:4] # radio only supports 4 bytes
+	freq_bytes = bytearray.fromhex(freq_in_hex)
 	command_type_byte = bytearray(b'\x37') if isTX else bytearray(b'\x39')
 	channel_num_byte = bytearray(chr(channelNum))
 	command_buf_payload = command_type_byte + channel_num_byte + freq_bytes
@@ -67,13 +73,13 @@ def getSetFreqCommandBuf(freqInHZ, channelNum, isTX):
 	full_command_buf = start_of_header + command_buf_payload + checksum_byte + bytearray(b'\x00') #need to null terminate string
 	return full_command_buf
 
-def setRxFreq(freqInHZ, channelNum):
+def setRxFreq(ser, freqInHZ, channelNum):
 	setRxCommandBuf = getSetFreqCommandBuf(freqInHZ, channelNum, False)
-	sendConfigCommand(setRxCommandBuf)
+	return sendConfigCommand(ser, setRxCommandBuf)
 
-def setTxFreq(freqInHZ, channelNum):
+def setTxFreq(ser, freqInHZ, channelNum):
 	setTxCommandBuf = getSetFreqCommandBuf(freqInHZ, channelNum, True)
-	sendConfigCommand(setTxCommandBuf)
+	return sendConfigCommand(ser, setTxCommandBuf)
 
 if __name__ == "__main__":
 	ser = serial.Serial(config.SERIAL_PORT, config.SERIAL_BAUD, timeout=None)
