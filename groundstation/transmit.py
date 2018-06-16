@@ -58,11 +58,63 @@ def uplinkTests(cmds, ser):
 	sendUplink(cmds['flashkill_cmd'], config.UPLINK_RESPONSES['flashkill_cmd'], ser)
 	sendUplink(cmds['flashrevive_cmd'], config.UPLINK_RESPONSES['flashrevive_cmd'], ser)
 
+def xdl_sweep_test(ser):
+    for i in range(255):
+        ser.write(chr(i)*1000)
+        print("i: %d" % i)
+        time.sleep(0.5)
+        print ser.read(size=ser.in_waiting),
+
+def xdl_test(ser):
+    for i in range(3):
+        ser.write(chr(0)*1000)
+        time.sleep(0.5)
+        #print ser.read(size=ser.in_waiting),
+        ser.write(chr(255)*1000)
+        time.sleep(0.5)
+        #print ser.read(size=ser.in_waiting),
+
+    for i in range(3):
+        ser.write(chr(0b01010101)*1000)
+        time.sleep(0.5)
+
+    for i in range(3):
+        ser.write(chr(0b10101010)*1000)
+        time.sleep(0.5)
+
+    for i in range(3):
+        ser.write("equisat "*500)
+        time.sleep(0.5)
+
+    time.sleep(10)
+
+def ping_test(ser):
+    while True:
+        print("transmitting")
+        ser.write("equisat " * 250)
+        time.sleep(2)
+
+tests = {
+	"xdl_sweep_test": xdl_sweep_test,
+	"xdl_test": xdl_test,
+	"ping_test": ping_test
+}
+usage = "usage: ./transmit.py <test name>\ntest names: %s" % tests.keys()
+
 def main():
+	# command line args
+	if len(sys.argv) < 2 or not tests.has_key(sys.argv[1]) or len(sys.argv) > 2:
+	    print(usage)
+            exit()
+	testName = sys.argv[1]
+
+	# setup
 	ser = serial.Serial(config.SERIAL_PORT, config.SERIAL_BAUD, timeout=None)
 	cmds = loadUplinkCommands(config.UPLINK_COMMANDS_FILE)
-	print(cmds)
-	uplinkTests(cmds, ser)
+	print("uplink commands: %s" % cmds)
+
+	# run requested test
+	tests[testName](ser)
 
 if __name__ == "__main__":
 	logging.basicConfig(level=logging.INFO)
