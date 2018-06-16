@@ -76,6 +76,17 @@ def getSetFreqCommandBuf(freqInHZ, channelNum, isTX):
 	full_command_buf = start_of_header + command_buf_payload + checksum_byte + bytearray(b'\x00') #need to null terminate string
 	return full_command_buf
 
+def setChannel(channelNum): #channelNum must be between 1 and 32
+	if channelNum > 32 or channelNum < 0:
+		print("Error: Channel must be between 1 and 32 (0x20)")
+	start_of_header = bytearray(b'\x01')
+	command_type_byte = bytearray(b'\x03')
+	channel_num_byte = bytearray(chr(channelNum))
+	command_buf_payload = command_type_byte + channel_num_byte
+	checksum_byte = chr(~(sum(command_buf_payload) % 255) & 255) #checksum is sum of bytes (not including start of header) mod 0xFF, then one's complement
+	full_command_buf = start_of_header + command_buf_payload + checksum + bytearray(b'\x00') #need to null terminate string
+	return sendConfigCommand(ser, full_command_buf)
+
 def setRxFreq(ser, freqInHZ, channelNum):
 	setRxCommandBuf = getSetFreqCommandBuf(freqInHZ, channelNum, False)
 	return sendConfigCommand(ser, setRxCommandBuf)
