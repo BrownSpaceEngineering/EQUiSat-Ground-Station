@@ -87,6 +87,21 @@ def setChannel(channelNum): #channelNum must be between 1 and 32
 	full_command_buf = start_of_header + command_buf_payload + checksum + bytearray(b'\x00') #need to null terminate string
 	return sendConfigCommand(ser, full_command_buf)
 
+def addChannel(channelNum, rxFreqInHez, txFreqInHz, bandwidthInHz):
+	start_of_header = bytearray(b'\x01')
+	command_type_byte = bytearray(b'\x70\x00')
+	channel_num_byte = bytearray(chr(channelNum))
+	rx_freq_in_hex = '{:4x}'.format(rxFreqInHZ).replace(" ", "0")[:4] # radio only supports 4 bytes
+	rx_freq_bytes = bytearray.fromhex(rxFreq_in_hex)
+	tx_freq_in_hex = '{:4x}'.format(txFreqInHZ).replace(" ", "0")[:4] # radio only supports 4 bytes
+	tx_freq_bytes = bytearray.fromhex(txFreq_in_hex)
+	bandwidth_in_hex = '{:4x}'.format(bandwidthInHz).replace(" ", "0")[:4] # radio only supports 4 bytes
+	bandwidth_bytes = bytearray.fromhex(bandwidthInHz)
+	command_buf_payload = command_type_byte + channel_num_byte + rx_freq_bytes + tx_freq_bytes + bandwidth_bytes
+	checksum_byte = chr(~(sum(command_buf_payload) % 255) & 255) #checksum is sum of bytes (not including start of header) mod 0xFF, then one's complement
+	full_command_buf = start_of_header + command_buf_payload + checksum + bytearray(b'\x00')  #need to null terminate string
+	return sendConfigCommand(ser, full_command_buf)
+
 def setRxFreq(ser, freqInHZ, channelNum):
 	setRxCommandBuf = getSetFreqCommandBuf(freqInHZ, channelNum, False)
 	return sendConfigCommand(ser, setRxCommandBuf)
