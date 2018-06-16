@@ -21,7 +21,10 @@ delete_channel = bytearray(b'\x01\x70\x01\x01\x8d\x00')
 
 def enterCommandMode(ser):
 	logging.info("Setting radio to command mode")
-	return sendConfigCommand(ser, "+++")
+	time.sleep(0.1)
+	okay = sendConfigCommand(ser, "+++")
+	time.sleep(0.1)
+	return okay
 
 def exitCommandMode(ser):
 	logging.info("Setting radio to normal mode")

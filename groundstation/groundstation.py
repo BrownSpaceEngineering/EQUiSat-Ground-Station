@@ -200,8 +200,7 @@ class EQUiStation:
             good = self.update_pass_data()
             good = good and self.radio_update_pass_freqs()
             good = good and self.radio_activate_pass_freq(approaching=True)
-            if good:
-                self.ready_for_next_pass = True # keep trying again on any failure
+            if good: self.ready_for_next_pass = True # keep trying again on any failure
             return good
 
         # otherwise, if we've just passed the point of max elevation,
@@ -211,8 +210,7 @@ class EQUiStation:
             EQUiStation.FREQ_SWITCH_TIME_WINDOW_S):
             good = self.radio_activate_pass_freq(approaching=False)
             # indicate we need to set up for next pass at some point (halfway around world)
-            if good:
-                self.ready_for_next_pass = False
+            if good: self.ready_for_next_pass = False
             return good
 
     ##################################################################
@@ -295,15 +293,11 @@ parsed:
     # Radio control helpers
     ##################################################################
     def radio_update_pass_freqs(self):
-        good = self._radio_set_freq(self.radio_approaching_freq_hz, approaching=True)
-        good = good and self._radio_set_freq(self.radio_approaching_freq_hz, approaching=False)
-        return good
-
-    def _radio_set_freq(self, freq, approaching):
-        channel = 0 if approaching else 1
         self.rx_buf += radio_control.enterCommandMode(self.ser)
-        self.rx_buf += radio_control.setRxFreq(self.ser, freq, channel)
-        self.rx_buf += radio_control.setTxFreq(self.ser, freq, channel)
+        self.rx_buf += radio_control.setRxFreq(self.ser, self.radio_approaching_freq_hz, 0)
+        self.rx_buf += radio_control.setTxFreq(self.ser, self.radio_approaching_freq_hz, 0)
+        self.rx_buf += radio_control.setRxFreq(self.ser, self.radio_departing_freq_hz, 1)
+        self.rx_buf += radio_control.setTxFreq(self.ser, self.radio_departing_freq_hz, 1)
         self.rx_buf += radio_control.exitCommandMode(self.ser)
         return True # TODO: error handling
 
@@ -343,8 +337,7 @@ parsed:
             return False
         else:
             self.next_pass_data = r.json()
-             # TODO: what in the world time is 43264.61442463224?????????
-            self.max_alt_time = datetime.datetime.fromtimestamp(self.next_pass_data["max_alt_time"])
+            self.max_alt_time = datetime.datetime.utcfromtimestamp(self.next_pass_data["max_alt_time"])
             self.radio_approaching_freq_hz, self.radio_departing_freq_hz = \
                 self.determine_optimal_pass_freqs() # TODO: input
 
