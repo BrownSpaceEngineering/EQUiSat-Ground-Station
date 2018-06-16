@@ -66,7 +66,7 @@ def sendConfigCommand(ser, buf):
 def getSetFreqCommandBuf(freqInHZ, channelNum, isTX):
 	#structure is [Start of Header, Command #, Channel #, Freq Byte #1, Freq Byte #2, Freq Byte #3, Freq Byte #4, checksum]
 	#Byte #1 is MSB
-	freq_in_hex = '{:4x}'.format(freqInHZ).replace(" ", "0")[:4] # radio only supports 4 bytes
+	freq_in_hex = '{:4x}'.format(freqInHZ).replace(" ", "0")[:8] # radio only supports 4 bytes
 	freq_bytes = bytearray.fromhex(freq_in_hex)
 	command_type_byte = bytearray(b'\x37') if isTX else bytearray(b'\x39')
 	channel_num_byte = bytearray(chr(channelNum))
@@ -111,5 +111,6 @@ def setTxFreq(ser, freqInHZ, channelNum):
 	return sendConfigCommand(ser, setTxCommandBuf)
 
 if __name__ == "__main__":
+        logging.basicConfig(level=logging.DEBUG)
 	ser = serial.Serial(config.SERIAL_PORT, config.SERIAL_BAUD, timeout=None)
-	configRadio(ser)
+	#configRadio(ser)
