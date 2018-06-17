@@ -36,7 +36,11 @@ class EQUiStation:
     # doppler correction config
     TRACKING_API_ROUTE = "http://127.0.0.1/api"
     TRACKING_API_EQUISAT_LABEL = "ISS (ZARYA)"
-    BASE_RADIO_FREQ = int(435.55*10e6)
+    RADIO_BASE_FREQ_HZ = int(435.55*10e6)
+    RADIO_FREQ_STEP_HZ = radio_control.RADIO_FREQ_STEP_HZ
+    RADIO_INBOUND_CHAN = 2
+    RADIO_OUTBOUND_CHAN = 3
+    DOPPLER_MAX_ELEV_CORRECT_THRESH = 20 # deg
     PACKET_SEND_FREQ_S = 20
     FREQ_SWITCH_TIME_WINDOW_S = 60 # how close to max elevation time to switch frequency
     POST_PASS_RESET_WINDOW_S = 10*60 # how close to halfways around planet to update frequency for next pass
@@ -56,9 +60,9 @@ class EQUiStation:
         self.station_alt = creds.station_alt
         self.next_pass_data = {}
         self.max_alt_time = datetime.datetime.now()
-        self.radio_cur_frequency_hz = self.BASE_RADIO_FREQ
-        self.radio_approaching_freq_hz = self.BASE_RADIO_FREQ
-        self.radio_departing_freq_hz = self.BASE_RADIO_FREQ
+        self.radio_cur_frequency_hz = self.RADIO_BASE_FREQ_HZ
+        self.radio_inbound_freq_hz = self.RADIO_BASE_FREQ_HZ
+        self.radio_outbound_freq_hz = self.RADIO_BASE_FREQ_HZ
         self.ready_for_next_pass = True
 
         self.ser = None
@@ -116,7 +120,7 @@ class EQUiStation:
         # get radio ready for a pass
         self.update_pass_data()
         self.radio_update_pass_freqs()
-        self.radio_activate_pass_freq(approaching=True)
+        self.radio_activate_pass_freq(inbound=True)
 
     def mainloop(self):
         self.pre_init()
@@ -199,16 +203,17 @@ class EQUiStation:
 
             good = self.update_pass_data()
             good = good and self.radio_update_pass_freqs()
-            good = good and self.radio_activate_pass_freq(approaching=True)
-            if good: self.ready_for_next_pass = True # keep trying again on any failure
+            good = good and self.radio_activate_pass_freq(inbound=True)
+             # keep trying again on any failure (we assume the post-pass reset window is large)
+            if good: self.ready_for_next_pass = True
             return good
 
         # otherwise, if we've just passed the point of max elevation,
         # TODO: and not close to when we expect a packet might come in,
-        # swap the frequency to be the departing-corrected one
+        # swap the frequency to be the outbound-corrected one
         elif EQUiStation.dtime_within(now, self.max_alt_time,\
             EQUiStation.FREQ_SWITCH_TIME_WINDOW_S):
-            good = self.radio_activate_pass_freq(approaching=False)
+            good = self.radio_activate_pass_freq(inbound=False)
             # indicate we need to set up for next pass at some point (halfway around world)
             if good: self.ready_for_next_pass = False
             return good
@@ -293,29 +298,35 @@ parsed:
     # Radio control helpers
     ##################################################################
     def radio_update_pass_freqs(self):
-        self.rx_buf += radio_control.enterCommandMode(self.ser)
-        self.rx_buf += radio_control.setRxFreq(self.ser, self.radio_approaching_freq_hz, 0)
-        self.rx_buf += radio_control.setTxFreq(self.ser, self.radio_approaching_freq_hz, 0)
-        self.rx_buf += radio_control.setRxFreq(self.ser, self.radio_departing_freq_hz, 1)
-        self.rx_buf += radio_control.setTxFreq(self.ser, self.radio_departing_freq_hz, 1)
-        self.rx_buf += radio_control.exitCommandMode(self.ser)
-        return True # TODO: error handling
+        enter_okay, rx1 = radio_control.enterCommandMode(self.ser, dealer_access=True)
+        rx_in_okay, rx2 = radio_control.setRxFreq(self.ser, self.radio_inbound_freq_hz, self.RADIO_INBOUND_CHAN)
+        tx_in_okay, rx3 = radio_control.setTxFreq(self.ser, self.radio_inbound_freq_hz, self.RADIO_INBOUND_CHAN)
+        rx_out_okay, rx4 = radio_control.setRxFreq(self.ser, self.radio_outbound_freq_hz, self.RADIO_OUTBOUND_CHAN)
+        tx_out_okay, rx5 = radio_control.setTxFreq(self.ser, self.radio_outbound_freq_hz, self.RADIO_OUTBOUND_CHAN)
+        exit_okay, rx6 = radio_control.exitCommandMode(self.ser)
+        self.rx_buf += rx1 + rx2 + rx3 + rx4 + rx5 + rx6
+        return enter_okay and rx_in_okay and tx_in_okay and rx_out_okay \
+            and tx_out_okay and exit_okay
 
-    def radio_activate_pass_freq(self, approaching):
-        """ (Quickly) sets the radio to either it's approaching mode or
-            departing mode. Does so by simply changing pre-configured channels """
+    def radio_activate_pass_freq(self, inbound):
+        """ (Quickly) sets the radio to either it's inbound mode or
+            outbound mode. Does so by simply changing pre-configured channels """
 
-        channel = 0 if approaching else 1
-        self.rx_buf += radio_control.enterCommandMode(self.ser)
-        #self.rx_buf += radio_control.setChannel(self.ser, channel)
-        self.rx_buf += radio_control.exitCommandMode(self.ser)
+        channel = self.RADIO_INBOUND_CHAN if inbound else self.RADIO_OUTBOUND_CHAN
+        _, rx1 = radio_control.enterCommandMode(self.ser)
+        channel_okay, rx2 = radio_control.setChannel(self.ser, channel)
+        exit_okay, rx3 = radio_control.exitCommandMode(self.ser)
 
-        if approaching:
-            self.radio_cur_frequency_hz = self.radio_approaching_freq_hz
+        self.rx_buf += rx1 + rx2 + rx3
+        okay = channel_okay and exit_okay
+        if not okay:
+            return False
+
+        if inbound:
+            self.radio_cur_frequency_hz = self.radio_inbound_freq_hz
         else:
-            self.radio_cur_frequency_hz = self.radio_departing_freq_hz
-
-        return True # TODO: error handling
+            self.radio_cur_frequency_hz = self.radio_outbound_freq_hz
+        return True
 
     ##################################################################
     # Doppler correct helpers
@@ -338,19 +349,29 @@ parsed:
         else:
             self.next_pass_data = r.json()
             self.max_alt_time = datetime.datetime.utcfromtimestamp(self.next_pass_data["max_alt_time"])
-            self.radio_approaching_freq_hz, self.radio_departing_freq_hz = \
-                self.determine_optimal_pass_freqs() # TODO: input
+            max_elevation = self.next_pass_data["max_alt"]
+            self.radio_inbound_freq_hz, self.radio_outbound_freq_hz = \
+                self.determine_optimal_pass_freqs(max_elevation)
 
-            logging.info("updated pass data with:\n%s\nfreqs: %d->%d" % \
-                (self.next_pass_data, self.radio_approaching_freq_hz, self.radio_departing_freq_hz))
+            logging.info("updated pass data with:\n%s\nfreqs: %d -> %d" % \
+                (self.next_pass_data, self.radio_inbound_freq_hz, self.radio_outbound_freq_hz))
             return True
 
-    def determine_optimal_pass_freqs(self):
+    def determine_optimal_pass_freqs(self, max_elevation):
         """ Determines the optimal pair of frequencies to maximize the change of error-free
-        packets during the approaching and departing component of a pass,
+        packets during the inbound and outbound component of a pass,
         based on the latest pass information.
-        Returns a tuple of (approaching freq in hz, departing freq in hz) """
-        return (self.BASE_RADIO_FREQ, self.BASE_RADIO_FREQ) # TODO: API call
+        Returns a tuple of (inbound freq in hz, outbound freq in hz) """
+
+        # the radio's frequency correction is so coarse (6.25 kHz),
+        # we just choose between the 6.25 and 12.5 kHz corrections based on
+        # the elevation of the pass
+        # (very low passes need less doppler shift while higher ones need more)
+        deviation = self.RADIO_FREQ_STEP_HZ
+        if max_elevation > self.DOPPLER_MAX_ELEV_CORRECT_THRESH:
+            deviation = 2 * self.RADIO_FREQ_STEP_HZ
+
+        return (self.RADIO_BASE_FREQ_HZ + deviation, self.RADIO_BASE_FREQ_HZ - deviation)
 
     @staticmethod
     def dtime_within(dtime1, dtime2, window_s):

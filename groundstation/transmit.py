@@ -89,10 +89,13 @@ def xdl_test(ser):
     time.sleep(10)
 
 def ping_test(ser):
-    while True:
-        print("transmitting")
-        ser.write("equisat " * 250)
-        time.sleep(2)
+	try:
+	    while True:
+	        print("transmitting")
+	        ser.write("equisat " * 100)
+	        time.sleep(2)
+	except KeyboardInterrupt:
+		return
 
 tests = {
 	"xdl_sweep_test": xdl_sweep_test,
