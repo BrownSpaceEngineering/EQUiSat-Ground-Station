@@ -12,12 +12,15 @@ from binascii import hexlify, unhexlify
 import requests
 
 import mock_serial
-import groundstation_credentials as creds
-import config
+from utils import *
 from reedsolomon import rscode
 from packetparse import packetparse
 import transmit
+import tracking
 import radio_control
+
+import station_config as station
+import config
 
 # testing config
 USE_TEST_FILE = True
@@ -55,9 +58,9 @@ class EQUiStation:
         self.only_send_tx_cmd = False
 
         # doppler shift/tracking
-        self.station_lat = creds.station_lat
-        self.station_lon = creds.station_lon
-        self.station_alt = creds.station_alt
+        self.station_lat = station.station_lat
+        self.station_lon = station.station_lon
+        self.station_alt = station.station_alt
         self.next_pass_data = {}
         self.max_alt_time = datetime.datetime.now()
         self.radio_cur_frequency_hz = self.RADIO_BASE_FREQ_HZ
@@ -66,6 +69,7 @@ class EQUiStation:
         self.ready_for_next_pass = True
 
         self.ser = None
+        self.tracker = tracking.SatTracker(config.SAT_CATALOG_NUMBER)
         logging.basicConfig(format='%(asctime)s %(message)s', level=logging.DEBUG)
 
     ##################################################################
@@ -130,8 +134,8 @@ class EQUiStation:
                 got_packet = self.receive() #TODO: do this even if self.only_send_tx_cmd???
 
                 # and if we did try and send any TX commands,
-                # if got_packet or self.only_send_tx_cmd:
-                #     _, _ = self.transmit()
+                if got_packet or self.only_send_tx_cmd:
+                    _, _ = self.transmit()
 
                 # and then try to adjust the frequency for doppler effects
                 self.correct_for_doppler()
@@ -197,7 +201,7 @@ class EQUiStation:
         # if the satellite is far past (on opposite side of planet),
         # update our data on the next pass and the actual radio frequency
         # settings to be ready for the next pass
-        if EQUiStation.dtime_within(now, self.max_alt_time +
+        if dtime_within(now, self.max_alt_time +
             datetime.timedelta(seconds=EQUiStation.ORBITAL_PERIOD_S/2), EQUiStation.POST_PASS_RESET_WINDOW_S) \
             and not self.ready_for_next_pass:
 
@@ -211,7 +215,7 @@ class EQUiStation:
         # otherwise, if we've just passed the point of max elevation,
         # TODO: and not close to when we expect a packet might come in,
         # swap the frequency to be the outbound-corrected one
-        elif EQUiStation.dtime_within(now, self.max_alt_time,\
+        elif dtime_within(now, self.max_alt_time,\
             EQUiStation.FREQ_SWITCH_TIME_WINDOW_S):
             good = self.radio_activate_pass_freq(inbound=False)
             # indicate we need to set up for next pass at some point (halfway around world)
@@ -262,7 +266,7 @@ parsed:
     def publish_packet(self, raw, corrected, parsed, errors_corrected, route=PACKET_PUB_ROUTE):
         """ Sends a POST request to the given API route to publish the packet. """
         json = {"raw": raw, "corrected": corrected, "transmission": parsed, \
-                "secret": creds.station_secret, "station_name": creds.station_name, \
+                "secret": station.station_secret, "station_name": station.station_name, \
                 "errors_corrected": errors_corrected }
         #requests.post(route, json=json) # TODO: don't wanna spam
 
@@ -334,21 +338,21 @@ parsed:
     def update_pass_data(self):
         """ Updates our cached information on the next EQUiSat pass via an API call """
 
-        req_url = "%s/get_next_pass/%s/%f,%f,%f" % (
-            self.TRACKING_API_ROUTE,
-            self.TRACKING_API_EQUISAT_LABEL,
-            self.station_lon,
-            self.station_lat,
-            self.station_alt
-        )
-        r = requests.get(req_url)
+        # update the TLE cache (every pass, we might as well)
+        success = self.tracker.update_tle()
+        if not success:
+            logging.error("error updating TLE data to latest")
 
-        if r.status_code != requests.codes.ok:
-            logging.info("pass data api call failed with code %d: %s" % (r.status_code, r.text))
+        # compute next pass geometrically
+        next_pass_data = self.tracker.get_next_pass()
+
+        if next_pass_data == None:
+            logging.info("error retrieving next pass data")
             return False
+            # our best bet is probably to use the old pass as it won't change a ton
         else:
-            self.next_pass_data = r.json()
-            self.max_alt_time = datetime.datetime.utcfromtimestamp(self.next_pass_data["max_alt_time"])
+            self.next_pass_data = next_pass_data
+            self.max_alt_time = self.next_pass_data["max_alt_time"]
             max_elevation = self.next_pass_data["max_alt"]
             self.radio_inbound_freq_hz, self.radio_outbound_freq_hz = \
                 self.determine_optimal_pass_freqs(max_elevation)
@@ -372,21 +376,6 @@ parsed:
             deviation = 2 * self.RADIO_FREQ_STEP_HZ
 
         return (self.RADIO_BASE_FREQ_HZ + deviation, self.RADIO_BASE_FREQ_HZ - deviation)
-
-    @staticmethod
-    def dtime_within(dtime1, dtime2, window_s):
-        """ Returns whether the two datetimes are within window_s seconds of eachother """
-        dtime1_secs = (dtime1-datetime.datetime(1970,1,1)).total_seconds()
-        dtime2_secs = (dtime2-datetime.datetime(1970,1,1)).total_seconds()
-        return abs(dtime1_secs - dtime2_secs) <= window_s
-
-    @staticmethod
-    def dtime_after(maybe_after, before=None):
-        """ Returns whether the datetime "before" is after "maybe_after"
-            "before" defaults to now """
-        if before == None:
-            before = datetime.datetime.now()
-        return (maybe_after - before).total_seconds() > 0
 
 def main():
     gs = EQUiStation()

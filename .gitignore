@@ -1,6 +1,7 @@
 *.pyc
 *.o
 uplink_commands.csv
+tle.txt
 groundstation_config.py
 groundstation_serial_out.txt
 receiveTest_dumps

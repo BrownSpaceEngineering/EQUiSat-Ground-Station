@@ -2,6 +2,7 @@
 
 # dependencies
 sudo apt-get install -y python-serial
+pip install -r requirements.txt
 
 # reedsolomon
 make -C ./groundstation/reedsolomon
