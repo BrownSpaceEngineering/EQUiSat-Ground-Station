@@ -17,21 +17,23 @@ def loadUplinkCommands(filename):
 	except (IOError):
 		logging.error("Could not find file: " + filename)
 
-def sendUplink(cmd, response, ser, rx_buf=""):
+def sendUplink(cmd, response, ser, repeats=1):
 	""" Attempts to send uplink command and waits for a time to receive
 		the expected response. Returns whether the response was found
-		and the update rx_buf. """
-	while True:
+		and the updated rx_buf. """
+	rx_buf = ""
+	num_repeats = 0
+	while num_repeats < repeats:
 		oldtime = time.time()
 		ser.write(cmd)
 		while (time.time() - oldtime) < .5:
-			logging.info("searching for response...")
+			logging.debug("searching for response...")
 			inwaiting = ser.in_waiting
 			if (inwaiting) > 0:
-					rx_buf += ser.read(size=inwaiting)
+				rx_buf += ser.read(size=inwaiting)
 
 			# search for expected response in RX buffer
-			index = data.find(response)
+			index = rx_buf.find(response)
 			if index != -1:
 				fullResponse = ""
 				if index + RESPONSE_LEN < len(rx_buf):
@@ -40,11 +42,13 @@ def sendUplink(cmd, response, ser, rx_buf=""):
 					fullResponse = rx_buf[index:]
 
 				# https://stackoverflow.com/a/12214880
-				logging.info("got TX response: %s (%s)" % (fullResponse, \
-					":".join("{:02x}".format(ord(c)) for c in s)))
+				logging.info("got uplink command response: %s (%s)" % (fullResponse, \
+					":".join("{:02x}".format(ord(c)) for c in fullResponse)))
 				return True, rx_buf
 
 			time.sleep(.1)
+		num_repeats += 1
+
 	return False, rx_buf
 
 def uplinkTests(cmds, ser):

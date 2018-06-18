@@ -26,7 +26,7 @@ delete_channel = bytearray(b'\x01\x70\x01\x01\x8d\x00')
 def enterCommandMode(ser, dealer_access=False, retries=DEFAULT_RETRIES, retry_delay_s=DEFAULT_RETRY_DELAY):
 	""" Sets the radio to be in command mode, optimally with full dealer access
 	Returns whether dealer_access mode was successful entered if selected """
-	logging.info("Setting radio to command mode")
+	logging.debug("Setting radio to command mode")
 	time.sleep(0.1)
 	_, rx_buf1 = sendConfigCommand(ser, "+++")
 	time.sleep(0.1)
@@ -38,7 +38,7 @@ def enterCommandMode(ser, dealer_access=False, retries=DEFAULT_RETRIES, retry_de
 		return True, rx_buf1
 
 def exitCommandMode(ser, retries=DEFAULT_RETRIES, retry_delay_s=DEFAULT_RETRY_DELAY):
-	logging.info("Setting radio to normal mode")
+	logging.debug("Setting radio to normal mode")
 	return sendConfigCommand(ser, warm_reset, retries=retries, retry_delay_s=retry_delay_s)
 
 def sendConfigCommand(ser, buf, retries=DEFAULT_RETRIES, retry_delay_s=DEFAULT_RETRY_DELAY):
@@ -48,7 +48,7 @@ def sendConfigCommand(ser, buf, retries=DEFAULT_RETRIES, retry_delay_s=DEFAULT_R
 	rx_buf = ""
 	retry = 0
 	while retry < retries and not okay:
-		logging.info("sending radio command%s: %s" % \
+		logging.debug("sending radio command%s: %s" % \
 			("" if retry == 0 else "(try %d)"%i, binascii.hexlify(buf)))
 		ser.write(buf)
 		oldtime = time.time()
@@ -56,7 +56,7 @@ def sendConfigCommand(ser, buf, retries=DEFAULT_RETRIES, retry_delay_s=DEFAULT_R
 			if ser.in_waiting > 0:
 				data = ser.read(size=ser.in_waiting)
 				rx_buf += data
-				logging.info("got radio command response: " + binascii.hexlify(data))
+				logging.debug("got radio command response: " + binascii.hexlify(data))
 				okay = True # TODO: actually read packet and then quit if correct
 			time.sleep(0.25)
 		time.sleep(retry_delay_s)

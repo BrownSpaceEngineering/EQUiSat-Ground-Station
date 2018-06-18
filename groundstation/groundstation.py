@@ -10,6 +10,7 @@ import datetime
 import logging
 from binascii import hexlify, unhexlify
 import requests
+from collections import OrderedDict
 
 import mock_serial
 from utils import *
@@ -24,10 +25,14 @@ import config
 
 # testing config
 USE_TEST_FILE = True
+GENERATE_FAKE_PASSES = True # see below for params
+RUN_TEST_UPLINKS = True
 TEST_INFILE = "../Test Dumps/test_packet_logfile.txt"
 TEST_OUTFILE = "groundstation_serial_out.txt"
 
 class EQUiStation:
+    LOGGING_LEVEL = logging.INFO
+
     # RX config
     PACKET_PUB_ROUTE = "http://api.brownspace.org/equisat/receive_data"
     CALLSIGN_HEX = "574c39585a" # WL9XZE
@@ -37,8 +42,8 @@ class EQUiStation:
         (CALLSIGN_HEX, PACKET_STR_LEN-len(CALLSIGN_HEX)))
 
     # doppler correction config
+    ORBITAL_PERIOD_S = 93#*60
     TRACKING_API_ROUTE = "http://127.0.0.1/api"
-    TRACKING_API_EQUISAT_LABEL = "ISS (ZARYA)"
     RADIO_BASE_FREQ_HZ = int(435.55*10e6)
     RADIO_FREQ_STEP_HZ = radio_control.RADIO_FREQ_STEP_HZ
     RADIO_INBOUND_CHAN = 2
@@ -46,15 +51,14 @@ class EQUiStation:
     DOPPLER_MAX_ELEV_CORRECT_THRESH = 20 # deg
     PACKET_SEND_FREQ_S = 20
     FREQ_SWITCH_TIME_WINDOW_S = 60 # how close to max elevation time to switch frequency
-    POST_PASS_RESET_WINDOW_S = 10*60 # how close to halfways around planet to update frequency for next pass
-    ORBITAL_PERIOD_S = 93*60
+    POST_PASS_RESET_WINDOW_S = ORBITAL_PERIOD_S/8 # how close to halfways around planet to update frequency for next pass
 
     def __init__(self):
         # globals for external api use, etc.
         self.last_data_rx = None
         self.last_packet_rx = None
         self.rx_buf = ""
-        self.tx_cmd_queue = [] # TODO: method to populate
+        self.tx_cmd_queue = []
         self.only_send_tx_cmd = False
 
         # doppler shift/tracking
@@ -66,47 +70,17 @@ class EQUiStation:
         self.radio_cur_frequency_hz = self.RADIO_BASE_FREQ_HZ
         self.radio_inbound_freq_hz = self.RADIO_BASE_FREQ_HZ
         self.radio_outbound_freq_hz = self.RADIO_BASE_FREQ_HZ
-        self.ready_for_next_pass = True
+        self.ready_for_next_pass = False # allow it to be set if it's in the window on boot, in case of failure
 
         self.ser = None
         self.tracker = tracking.SatTracker(config.SAT_CATALOG_NUMBER)
-        logging.basicConfig(format='%(asctime)s %(message)s', level=logging.DEBUG)
-
-    ##################################################################
-    # External interface for control
-    ##################################################################
-    def get_last_data_rx(self):
-        return self.last_data_rx
-
-    def get_last_packet_rx(self):
-        return self.last_packet_rx
-
-    def get_rx_buf():
-        return self.rx_buf
-
-    def send_tx_cmd(cmd, response, immediate=False):
-        """ Queues the given transmit command name and expected response to
-        be transmitted when best, or sets it to transmit immediately and
-        continually if immediate is set """
-        self.tx_cmd_queue.append({"cmd": cmd, "response": response})
-        if not self.only_send_tx_cmd and immediate:
-            self.only_send_tx_cmd = True
-
-    def cancel_immediate_tx_cmd(self, remove=True):
-        self.only_send_tx_cmd = False
-        if remove:
-            self.tx_cmd_queue.pop(0) # immediate is always at end
-
-    def cancel_tx_cmd(self, cmd):
-        pass # TODO
-
-    # TODO: callbacks: on_freq_change, on_packet_rx, on_data_rx, etc.
+        logging.basicConfig(format='%(asctime)s %(message)s', level=self.LOGGING_LEVEL)
 
     ##################################################################
     # Groundstation state machine
     ##################################################################
     def run(self, serial_port=None, serial_baud=38400, \
-        ser_infilename=None, ser_outfilename=None, file_read_size=PACKET_STR_LEN/2):
+        ser_infilename=None, ser_outfilename=None, file_read_size=PACKET_STR_LEN):
         try:
             if ser_infilename != None and ser_outfilename != None:
                 with mock_serial.MockSerial(infile_name=ser_infilename, outfile_name=ser_outfilename, max_inwaiting=file_read_size) as ser:
@@ -121,10 +95,21 @@ class EQUiStation:
             return
 
     def pre_init(self):
+        if RUN_TEST_UPLINKS:
+            cmds = transmit.loadUplinkCommands(config.UPLINK_COMMANDS_FILE)
+            self.send_tx_cmd(cmds['echo_cmd'], config.UPLINK_RESPONSES['echo_cmd'])
+            self.send_tx_cmd(cmds['kill3_cmd'], config.UPLINK_RESPONSES['kill3_cmd'])
+            self.send_tx_cmd(cmds['kill7_cmd'], config.UPLINK_RESPONSES['kill7_cmd'])
+            self.send_tx_cmd(cmds['killf_cmd'], config.UPLINK_RESPONSES['killf_cmd'])
+            self.send_tx_cmd(cmds['flash_cmd'], config.UPLINK_RESPONSES['flash_cmd'])
+            self.send_tx_cmd(cmds['reboot_cmd'], config.UPLINK_RESPONSES['reboot_cmd'])
+            self.send_tx_cmd(cmds['revive_cmd'], config.UPLINK_RESPONSES['revive_cmd'])
+            self.send_tx_cmd(cmds['flashkill_cmd'], config.UPLINK_RESPONSES['flashkill_cmd'])
+            self.send_tx_cmd(cmds['flashrevive_cmd'], config.UPLINK_RESPONSES['flashrevive_cmd'])
+
         # get radio ready for a pass
-        self.update_pass_data()
-        self.radio_update_pass_freqs()
-        self.radio_activate_pass_freq(inbound=True)
+        self.update_radio_for_pass()
+
 
     def mainloop(self):
         self.pre_init()
@@ -182,8 +167,15 @@ class EQUiStation:
 
         if len(self.tx_cmd_queue) > 0:
             command = self.tx_cmd_queue.pop(0)
-            got_response, self.rx_buf = transmit.sendUplink(command["cmd"],\
-                command["response"], self.ser, rx_buf=self.rx_buf)
+            logging.info("SENDING UPLINK COMMAND: %s" % command)
+
+            got_response, rx = transmit.sendUplink(command["cmd"], \
+                command["response"], self.ser)
+            self.rx_buf += rx
+
+            logging.info("uplink command success: %s" % got_response)
+            logging.debug("full uplink response: %s" % rx)
+
             if got_response:
                 return True, True
             else:
@@ -205,21 +197,21 @@ class EQUiStation:
             datetime.timedelta(seconds=EQUiStation.ORBITAL_PERIOD_S/2), EQUiStation.POST_PASS_RESET_WINDOW_S) \
             and not self.ready_for_next_pass:
 
-            good = self.update_pass_data()
-            good = good and self.radio_update_pass_freqs()
-            good = good and self.radio_activate_pass_freq(inbound=True)
-             # keep trying again on any failure (we assume the post-pass reset window is large)
+            good = self.update_radio_for_pass()
+            # keep trying again on any failure (we assume the post-pass reset window is large)
             if good: self.ready_for_next_pass = True
-            return good
 
         # otherwise, if we've just passed the point of max elevation,
         # TODO: and not close to when we expect a packet might come in,
         # swap the frequency to be the outbound-corrected one
         elif dtime_within(now, self.max_alt_time,\
-            EQUiStation.FREQ_SWITCH_TIME_WINDOW_S):
+            EQUiStation.FREQ_SWITCH_TIME_WINDOW_S) and self.ready_for_next_pass:
+
             good = self.radio_activate_pass_freq(inbound=False)
             # indicate we need to set up for next pass at some point (halfway around world)
             if good: self.ready_for_next_pass = False
+
+            logging.info("ADJUSTED FOR DOPPLER: %s" % "success" if good else "FAILURE")
             return good
 
     ##################################################################
@@ -237,7 +229,7 @@ class EQUiStation:
 
         # error correct and send packets to API
         for raw in packets:
-            logging.info("found packet, correcting & sending...")
+            logging.info("FOUND PACKET, correcting & sending...")
             corrected, error = EQUiStation.correct_packet_errors(raw)
             errors_corrected = error == None
 
@@ -268,7 +260,9 @@ parsed:
         json = {"raw": raw, "corrected": corrected, "transmission": parsed, \
                 "secret": station.station_secret, "station_name": station.station_name, \
                 "errors_corrected": errors_corrected }
-        #requests.post(route, json=json) # TODO: don't wanna spam
+        # r = requests.post(route, json=json) # TODO: don't wanna spam
+        # if r.status_code != requests.codes.ok:
+        #     logging.warning("couldn't publish packet (%d): %s" % (r.status_code, r.text))
 
     @staticmethod
     def extract_packets(buf):
@@ -335,6 +329,16 @@ parsed:
     ##################################################################
     # Doppler correct helpers
     ##################################################################
+    def update_radio_for_pass(self):
+        data_good = self.update_pass_data()
+        freqs_good = self.radio_update_pass_freqs()
+        activate_good = self.radio_activate_pass_freq(inbound=True)
+        good = data_good and freqs_good and activate_good
+
+        logging.info("UPDATED FOR NEXT PASS: | pass data: %s | freq setting: %s | activating freqs: %s |" \
+            % (data_good, freqs_good, activate_good))
+        return good
+
     def update_pass_data(self):
         """ Updates our cached information on the next EQUiSat pass via an API call """
 
@@ -346,8 +350,22 @@ parsed:
         # compute next pass geometrically
         next_pass_data = self.tracker.get_next_pass()
 
+        # TESTING override; generate fake pass instead
+        if GENERATE_FAKE_PASSES:
+            rise_time = rand_dtime(datetime.datetime.now(), 10)
+            set_time = rand_dtime(rise_time, 30)
+            max_alt_time = rise_time + (set_time - rise_time)/2 # avg
+            next_pass_data = OrderedDict([
+                ('rise_time', rise_time),
+                ('rise_azimuth', random.randint(0, 360)),
+                ('max_alt_time', max_alt_time),
+                ('max_alt', random.randint(-90, 90)),
+                ('set_time', set_time),
+                ('set_azimuth', random.randint(0, 360))
+            ])
+
         if next_pass_data == None:
-            logging.info("error retrieving next pass data")
+            logging.error("error retrieving next pass data")
             return False
             # our best bet is probably to use the old pass as it won't change a ton
         else:
@@ -376,6 +394,37 @@ parsed:
             deviation = 2 * self.RADIO_FREQ_STEP_HZ
 
         return (self.RADIO_BASE_FREQ_HZ + deviation, self.RADIO_BASE_FREQ_HZ - deviation)
+
+    ##################################################################
+    # External interface for control
+    ##################################################################
+    def get_last_data_rx(self):
+        return self.last_data_rx
+
+    def get_last_packet_rx(self):
+        return self.last_packet_rx
+
+    def get_rx_buf(self):
+        return self.rx_buf
+
+    def send_tx_cmd(self, cmd, response, immediate=False):
+        """ Queues the given transmit command name and expected response to
+        be transmitted when best, or sets it to transmit immediately and
+        continually if immediate is set """
+        self.tx_cmd_queue.append({"cmd": cmd, "response": response})
+        if not self.only_send_tx_cmd and immediate:
+            self.only_send_tx_cmd = True
+
+    def cancel_immediate_tx_cmd(self, remove=True):
+        self.only_send_tx_cmd = False
+        if remove:
+            self.tx_cmd_queue.pop(0) # immediate is always at end
+
+    def cancel_tx_cmd(self, cmd):
+        pass # TODO
+
+    # TODO: callbacks: on_freq_change, on_packet_rx, on_data_rx, etc.
+
 
 def main():
     gs = EQUiStation()
