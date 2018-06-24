@@ -6,6 +6,8 @@
 import sys, time, binascii, csv, logging, serial, struct
 import config
 
+TX_RESPONSE_TIMEOUT_S = 1.0
+
 def loadUplinkCommands(filename):
 	try:
 		with open(filename) as file:
@@ -26,7 +28,7 @@ def sendUplink(cmd, response, ser, repeats=1):
 	while num_repeats < repeats:
 		oldtime = time.time()
 		ser.write(cmd)
-		while (time.time() - oldtime) < .5:
+		while (time.time() - oldtime) < TX_RESPONSE_TIMEOUT_S:
 			logging.debug("searching for response...")
 			inwaiting = ser.in_waiting
 			if (inwaiting) > 0:
