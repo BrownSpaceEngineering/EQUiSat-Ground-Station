@@ -3,6 +3,7 @@
 # the XDL Micro over serial, performing error correcting, and
 # sending the data to BSE's server.
 import os
+import sys
 import re
 import serial
 import time
@@ -63,13 +64,15 @@ class EQUiStation:
         self.station_lat = station.station_lat
         self.station_lon = station.station_lon
         self.station_alt = station.station_alt
-        self.next_pass_data = {}
         self.doppler_correct_time = datetime.datetime.now()
         self.update_pass_data_time = datetime.datetime.now()
-        self.radio_cur_frequency_hz = self.RADIO_BASE_FREQ_HZ
-        self.radio_inbound_freq_hz = self.RADIO_BASE_FREQ_HZ
-        self.radio_outbound_freq_hz = self.RADIO_BASE_FREQ_HZ
+        self.radio_cur_channel = 1 # default no correction channel
+        self.radio_inbound_channel = 1
+        self.radio_outbound_channel = 1
         self.ready_for_next_pass = False # allow it to be set if it's in the window on boot, in case of failure
+
+        # just stored to be accessible to API, no actual use
+        self.next_pass_data = {}
 
         self.ser = None
         self.tracker = tracking.SatTracker(config.SAT_CATALOG_NUMBER)
@@ -78,22 +81,24 @@ class EQUiStation:
     ##################################################################
     # Groundstation state machine
     ##################################################################
-    def run(self, serial_port=None, serial_baud=38400, \
+    def run(self, serial_port=None, serial_baud=38400, preconfig=False, \
         ser_infilename=None, ser_outfilename=None, file_read_size=PACKET_STR_LEN):
         try:
             if ser_infilename != None and ser_outfilename != None:
                 with mock_serial.MockSerial(infile_name=ser_infilename, outfile_name=ser_outfilename, max_inwaiting=file_read_size) as ser:
                     self.ser = ser
-                    self.mainloop()
+                    self.mainloop(radio_preconfig=preconfig)
             else:
                 with serial.Serial(serial_port, serial_baud, timeout=None) as ser:
                     self.ser = ser
-                    self.mainloop()
-
+                    self.mainloop(radio_preconfig=preconfig)
         except KeyboardInterrupt:
             return
 
-    def pre_init(self):
+    def pre_init(self, radio_preconfig):
+        if radio_preconfig:
+            self.radio_preconfig_pass_freqs()
+
         if RUN_TEST_UPLINKS:
             cmds = transmit.loadUplinkCommands(config.UPLINK_COMMANDS_FILE)
             self.send_tx_cmd(cmds['echo_cmd'], config.UPLINK_RESPONSES['echo_cmd'])
@@ -109,9 +114,8 @@ class EQUiStation:
         # get radio ready for a pass
         self.update_radio_for_pass()
 
-
-    def mainloop(self):
-        self.pre_init()
+    def mainloop(self, radio_preconfig=False):
+        self.pre_init(radio_preconfig)
         while True:
             try:
                 # try and receive data (a packet),
@@ -332,48 +336,94 @@ parsed:
     ##################################################################
     # Radio control helpers
     ##################################################################
-    def radio_update_pass_freqs(self):
-        enter_okay, rx1 = radio_control.enterCommandMode(self.ser, dealer_access=True)
-        rx_in_okay, rx2 = radio_control.setRxFreq(self.ser, self.radio_inbound_freq_hz, self.RADIO_INBOUND_CHAN)
-        tx_in_okay, rx3 = radio_control.setTxFreq(self.ser, self.radio_inbound_freq_hz, self.RADIO_INBOUND_CHAN)
-        rx_out_okay, rx4 = radio_control.setRxFreq(self.ser, self.radio_outbound_freq_hz, self.RADIO_OUTBOUND_CHAN)
-        tx_out_okay, rx5 = radio_control.setTxFreq(self.ser, self.radio_outbound_freq_hz, self.RADIO_OUTBOUND_CHAN)
-        exit_okay, rx6 = radio_control.exitCommandMode(self.ser)
-        self.rx_buf += rx1 + rx2 + rx3 + rx4 + rx5 + rx6
-        return enter_okay and rx_in_okay and tx_in_okay and rx_out_okay \
-            and tx_out_okay and exit_okay
-
     def radio_activate_pass_freq(self, inbound):
         """ (Quickly) sets the radio to either it's inbound mode or
             outbound mode. Does so by simply changing pre-configured channels """
 
-        channel = self.RADIO_INBOUND_CHAN if inbound else self.RADIO_OUTBOUND_CHAN
-        _, rx1 = radio_control.enterCommandMode(self.ser)
-        channel_okay, rx2 = radio_control.setChannel(self.ser, channel)
+        # switch between preconfigured channels
+        if inbound:
+            self.radio_cur_channel = self.radio_inbound_channel
+        else:
+            self.radio_cur_channel = self.radio_outbound_channel
+
+        # apply channel change
+        enter_okay, rx1 = radio_control.enterCommandMode(self.ser)
+        channel_okay, rx2 = radio_control.setChannel(self.ser, self.radio_cur_channel)
         exit_okay, rx3 = radio_control.exitCommandMode(self.ser)
 
         self.rx_buf += rx1 + rx2 + rx3
-        okay = channel_okay and exit_okay
-        if not okay:
-            return False
+        return enter_okay and channel_okay and exit_okay
 
-        if inbound:
-            self.radio_cur_frequency_hz = self.radio_inbound_freq_hz
-        else:
-            self.radio_cur_frequency_hz = self.radio_outbound_freq_hz
-        return True
+    def radio_preconfig_pass_freqs(self):
+        """ Sets up the inital (unchanged) radio config as having different channels
+        for different levels of doppler correction
+        ch 1: 0     kHz doppler shift
+        ch 2: 6.25  kHz
+        ch 3: -6.25 kHz
+        ch 4: 12.5  kHz
+        ch 5: -12.5 kHz
+        ch 6: 18.75 kHz
+        ch 7: -18.75kHz
+        """
+        logging.info()
+        # enter command mode and set default (no shift channel) - mainly for testing
+        enter_okay, rx1 = radio_control.enterCommandMode(self.ser, dealer_access=True)
+        def_okay, rx2 = self.radio_set_freq(self.RADIO_BASE_FREQ_HZ, 1)
+        self.rx_buf += rx1 + rx2
+
+        # set shifted channels
+        mid_channels_okay = True
+        channel = 2
+        for shift in (0, 3*self.RADIO_FREQ_STEP_HZ, self.RADIO_FREQ_STEP_HZ):
+            # set inbound and outbound pair of channels
+            in_okay, rx1 = self.radio_set_freq(self.RADIO_BASE_FREQ_HZ + shift, channel)
+            channel += 1
+            out_okay, rx2 = self.radio_set_freq(self.RADIO_BASE_FREQ_HZ - shift, channel)
+            # update
+            channel += 1
+            mid_channels_okay = in_okay and out_okay
+            self.rx_buf += rx1 + rx2
+
+        # exit command mode
+        exit_okay, rx = radio_control.exitCommandMode(self.ser)
+        self.rx_buf += rx
+        return enter_okay and def_okay and mid_channels_okay and exit_okay
+
+    def radio_set_freq(self, freq, channel):
+        rx_okay, rx1 = radio_control.setRxFreq(self.ser, self.radio_inbound_freq_hz, channel)
+        tx_okay, rx2 = radio_control.setTxFreq(self.ser, self.radio_inbound_freq_hz, channel)
+        return rx_okay and tx_okay, rx1 + rx2
 
     ##################################################################
     # Doppler correct helpers
     ##################################################################
+    def update_optimal_pass_freqs(self, max_elevation):
+        """ Updates the radio channel setting to use
+        the optimal pair of frequencies to maximize the change of error-free
+        packets during the inbound and outbound component of a pass,
+        based on the latest pass information.
+        This is based on pre-configured channels. """
+        # the radio's frequency correction is so coarse (6.25 kHz),
+        # we just choose between the 6.25 and 12.5 kHz corrections based on
+        # the elevation of the pass
+        # (very low passes need less doppler shift while higher ones need more)
+        # (see radio_preconfig_pass_freqs)
+        # NOTE: if max_elevation is below horizon, use the small deviations
+        # to minimize impact if our pass data is completely off
+        if max_elevation <= self.DOPPLER_MAX_ELEV_THRESH:
+            self.radio_inbound_channel = 2
+            self.radio_outbound_channel = 3
+        else:
+            self.radio_inbound_channel = 4
+            self.radio_outbound_channel = 5
+
     def update_radio_for_pass(self):
         data_good = self.update_pass_data()
-        freqs_good = self.radio_update_pass_freqs()
         activate_good = self.radio_activate_pass_freq(inbound=True)
-        good = data_good and freqs_good and activate_good
+        good = data_good and activate_good
 
-        logging.info("UPDATED FOR NEXT PASS: | pass data: %s | freq setting: %s | activating freqs: %s |" \
-            % (data_good, freqs_good, activate_good))
+        logging.info("UPDATED FOR NEXT PASS: | pass data: %s | activating freqs: %s |" \
+            % (data_good, activate_good))
         return good
 
     def update_pass_data(self):
@@ -409,29 +459,14 @@ parsed:
             self.next_pass_data = next_pass_data
             # note we may change this time to avoid correcting during an RX
             self.doppler_correct_time = self.next_pass_data["max_alt_time"]
-            max_elevation = self.next_pass_data["max_alt"]
-            self.radio_inbound_freq_hz, self.radio_outbound_freq_hz = \
-                self.determine_optimal_pass_freqs(max_elevation)
+            # setup the radio channel to use the optimal frequencies,
+            # and note those frequencies
+            self.update_optimal_pass_freqs(self.next_pass_data["max_alt"])
 
-            logging.info("updated pass data with:\n%s\nfreqs: %d -> %d" % \
-                (self.next_pass_data, self.radio_inbound_freq_hz, self.radio_outbound_freq_hz))
+            logging.info("updated pass data with:\n%s\nchannels: %d -> %d\nfreqs: %d -> %d" % \
+                (self.next_pass_data, self.radio_inbound_channel, self.radio_outbound_channel, \
+                self.get_radio_inbound_freq_hz(), self.get_radio_outbound_freq_hz()))
             return True
-
-    def determine_optimal_pass_freqs(self, max_elevation):
-        """ Determines the optimal pair of frequencies to maximize the change of error-free
-        packets during the inbound and outbound component of a pass,
-        based on the latest pass information.
-        Returns a tuple of (inbound freq in hz, outbound freq in hz) """
-
-        # the radio's frequency correction is so coarse (6.25 kHz),
-        # we just choose between the 6.25 and 12.5 kHz corrections based on
-        # the elevation of the pass
-        # (very low passes need less doppler shift while higher ones need more)
-        deviation = self.RADIO_FREQ_STEP_HZ
-        if max_elevation > self.DOPPLER_MAX_ELEV_THRESH:
-            deviation = 2 * self.RADIO_FREQ_STEP_HZ
-
-        return (self.RADIO_BASE_FREQ_HZ + deviation, self.RADIO_BASE_FREQ_HZ - deviation)
 
     ##################################################################
     # External interface for control
@@ -441,6 +476,18 @@ parsed:
 
     def get_last_packet_rx(self):
         return self.last_packet_rx
+
+    def get_radio_inbound_freq_hz(self):
+        return self.RADIO_BASE_FREQ_HZ + self.get_radio_doppler_correction()
+
+    def get_radio_outbound_freq_hz(self):
+        return self.RADIO_BASE_FREQ_HZ - self.get_radio_doppler_correction()
+
+    def get_radio_doppler_correction(self):
+        # even radio channels are inbound channels,
+        # and every factor of two is another radio step frequency
+        # (absolute dopppler correction)
+        return self.RADIO_FREQ_STEP_HZ * self.radio_inbound_channel/2
 
     def get_rx_buf(self):
         return self.rx_buf
@@ -465,11 +512,15 @@ parsed:
 
 
 def main():
+    preconfig = False
+    if len(sys.argv) >= 2 and sys.argv[1] == "preconfig":
+        preconfig = True
+
     gs = EQUiStation()
     if USE_TEST_FILE:
-        gs.run(ser_infilename=TEST_INFILE, ser_outfilename=TEST_OUTFILE)
+        gs.run(ser_infilename=TEST_INFILE, ser_outfilename=TEST_OUTFILE, preconfig=preconfig)
     else:
-        gs.run(serial_port=config.SERIAL_PORT, serial_baud=config.SERIAL_BAUD)
+        gs.run(serial_port=config.SERIAL_PORT, serial_baud=config.SERIAL_BAUD, preconfig=preconfig)
 
 if __name__ == "__main__":
     #print(trim_buffer("cats are cool", 4, 4)) # should be "cool"
