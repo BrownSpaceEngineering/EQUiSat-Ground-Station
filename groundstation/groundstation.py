@@ -365,7 +365,7 @@ parsed:
         ch 6: 18.75 kHz
         ch 7: -18.75kHz
         """
-        logging.info()
+        logging.info("preconfiguring radio channels...")
         # enter command mode and set default (no shift channel) - mainly for testing
         enter_okay, rx1 = radio_control.enterCommandMode(self.ser, dealer_access=True)
         def_okay, rx2 = self.radio_set_freq(self.RADIO_BASE_FREQ_HZ, 1)
@@ -387,11 +387,14 @@ parsed:
         # exit command mode
         exit_okay, rx = radio_control.exitCommandMode(self.ser)
         self.rx_buf += rx
-        return enter_okay and def_okay and mid_channels_okay and exit_okay
+
+        okay = enter_okay and def_okay and mid_channels_okay and exit_okay
+        logging.info("preconfigured radio channels: %s" % "success" if okay else "FAILURE")
+        return okay
 
     def radio_set_freq(self, freq, channel):
-        rx_okay, rx1 = radio_control.setRxFreq(self.ser, self.radio_inbound_freq_hz, channel)
-        tx_okay, rx2 = radio_control.setTxFreq(self.ser, self.radio_inbound_freq_hz, channel)
+        rx_okay, rx1 = radio_control.setRxFreq(self.ser, freq, channel)
+        tx_okay, rx2 = radio_control.setTxFreq(self.ser, freq, channel)
         return rx_okay and tx_okay, rx1 + rx2
 
     ##################################################################
