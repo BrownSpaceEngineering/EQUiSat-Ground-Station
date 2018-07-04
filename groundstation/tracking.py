@@ -1,5 +1,6 @@
 #!/usr/bin/python
 # Utilities for tracking satellite passes
+# Good resource: https://brainwagon.org/2009/09/27/how-to-use-python-to-predict-satellite-locations/
 import ephem
 import datetime
 import math
@@ -22,16 +23,15 @@ class SatTracker:
     def get_next_pass(self):
         """ Returns a dictionary with the rise and set time and azimuth as well as
         the max alt (transmit) time and elevation, or None if TLEs are not known """
-        if len(self.tle) != 3:
+        if self.tle is None:
             return None
 
         try:
-            sat = ephem.readtle(self.tle[0], self.tle[1], self.tle[2])
             obs = ephem.Observer()
-            obs.lon = station.station_lon
-            obs.lat = station.station_lat
+            obs.lon = str(station.station_lon)
+            obs.lat = str(station.station_lat)
             obs.elevation = station.station_alt
-            passData = obs.next_pass(sat)
+            passData = obs.next_pass(self.tle)
             # next_pass returns a six-element tuple giving:
             # (dates are in UTC)
             # 0  Rise time
@@ -61,6 +61,11 @@ class SatTracker:
             with open(self.tle_fname, 'r') as tle_file:
                 tles = tle_file.read()
                 self.tle = self.extract_tle(self.norad_id, tles)
+                if self.tle is None:
+                    msg = "tracking: TLEs could not be read"
+                    logging.error(msg)
+                    raise ValueError(msg)
+
         except IOError as e:
             logging.warn("tracking: TLE file not found, attempting to re-download (err: %s)" % e)
             # if the file's not found, we need to perform initial update
@@ -72,20 +77,16 @@ class SatTracker:
             and returns a three-element string list of the satellite name and two lines of elements.
             Returns None if no TLEs for norad_id was found. """
         tle_list = tle_data.split("\n")
-        for i in range(len(tle_list)):
-            cur_line_split = tle_list[i].split(" ")
-            if len(cur_line_split) < 2:
-                continue
-            if cur_line_split[1].strip() == norad_id + "U":
-                # handle no satellite name
-                sat_name = ""
-                if i > 0:
-                    sat_name = tle_list[i-1]
-                # handle incomplete file
-                if i > len(tle_list)-2:
-                    return None
-                else:
-                    return [sat_name, tle_list[i], tle_list[i+1]]
+
+        # invalid TLE file
+        if len(tle_list) < 3:
+            return None
+
+        for i in range(0, len(tle_list)-2):
+            tle = ephem.readtle(tle_list[i], tle_list[i+1], tle_list[i+2])
+            if str(tle.catalog_number) == norad_id:
+                return tle
+
         return None
 
     def update_tle(self):
@@ -115,8 +116,29 @@ class SatTracker:
             logging.error("tracking: error writing TLE file: %s" % e)
             return False
 
+    def pyephem_pass_test(self, start_date=ephem.now(), num=10):
+        """ Adapted from https://brainwagon.org/2009/09/27/how-to-use-python-to-predict-satellite-locations/ """
+        obs = ephem.Observer()
+        obs.lat = str(station.station_lat)
+        obs.long = str(station.station_lon)
+        obs.date = start_date
+
+        for p in range(num):
+            pass_data = obs.next_pass(self.tle)
+            tr, azr, tt, altt, ts, azs = pass_data
+            print(pass_data)
+
+            while tr < ts :
+                obs.date = tr
+                self.tle.compute(obs)
+                print "%s %4.1f %5.1f" % (tr, math.degrees(self.tle.alt), math.degrees(self.tle.az))
+                tr = ephem.Date(tr + 60.0 * ephem.second)
+            print
+            obs.date = tr + ephem.minute
+
 if __name__ == "__main__":
     import config
     st = SatTracker(config.SAT_CATALOG_NUMBER)
     st.update_tle()
     print(st.get_next_pass())
+    print(st.pyephem_pass_test()) #"2018/7/4 6:00:00"))
