@@ -43,6 +43,12 @@ class SatTracker:
             # date info: http://rhodesmill.org/pyephem/date
             # next_pass info:
             # https://github.com/brandon-rhodes/pyephem/blob/592ecff661adb9c5cbed7437a23d705555d7ce57/libastro-3.7.7/riset_cir.c#L17
+            if passData == None:
+                return None
+            for data in passData:
+                if data == None:
+                    return None
+
             return OrderedDict([
                 ('rise_time', passData[0].datetime()),
                 ('rise_azimuth', math.degrees(passData[1])),

@@ -32,7 +32,7 @@ TEST_INFILE = "../Test Dumps/test_packet_logfile.txt"
 TEST_OUTFILE = "groundstation_serial_out.txt"
 
 class EQUiStation:
-    LOGGING_LEVEL = logging.INFO
+    DEFAULT_LOGGING_LEVEL = logging.INFO
 
     # RX config
     PACKET_PUB_ROUTE = "http://api.brownspace.org/equisat/receive_data"
@@ -76,22 +76,22 @@ class EQUiStation:
 
         self.ser = None
         self.tracker = tracking.SatTracker(config.SAT_CATALOG_NUMBER)
-        logging.basicConfig(format='%(asctime)s %(message)s', level=self.LOGGING_LEVEL)
+        logging.basicConfig(format='%(asctime)s %(message)s', level=self.DEFAULT_LOGGING_LEVEL)
 
     ##################################################################
     # Groundstation state machine
     ##################################################################
-    def run(self, serial_port=None, serial_baud=38400, preconfig=False, \
+    def run(self, serial_port=None, serial_baud=38400, radio_preconfig=False, \
         ser_infilename=None, ser_outfilename=None, file_read_size=PACKET_STR_LEN):
         try:
             if ser_infilename != None and ser_outfilename != None:
                 with mock_serial.MockSerial(infile_name=ser_infilename, outfile_name=ser_outfilename, max_inwaiting=file_read_size) as ser:
                     self.ser = ser
-                    self.mainloop(radio_preconfig=preconfig)
+                    self.mainloop(radio_preconfig=radio_preconfig)
             else:
                 with serial.Serial(serial_port, serial_baud, timeout=None) as ser:
                     self.ser = ser
-                    self.mainloop(radio_preconfig=preconfig)
+                    self.mainloop(radio_preconfig=radio_preconfig)
         except KeyboardInterrupt:
             return
 
@@ -447,17 +447,21 @@ parsed:
             max_alt_time = rise_time + (set_time - rise_time)/2 # avg
             next_pass_data = OrderedDict([
                 ('rise_time', rise_time),
-                ('rise_azimuth', random.randint(0, 360)),
+                ('rise_azimuth', random.randint(0, 360)*1.0),
                 ('max_alt_time', max_alt_time),
-                ('max_alt', random.randint(-90, 90)),
+                ('max_alt', random.randint(-90, 90)*1.0),
                 ('set_time', set_time),
-                ('set_azimuth', random.randint(0, 360))
+                ('set_azimuth', random.randint(0, 360)*1.0)
             ])
 
+        # on fails, our best bet is probably to use the old pass as it won't change a ton
         if next_pass_data == None:
             logging.error("error retrieving next pass data")
             return False
-            # our best bet is probably to use the old pass as it won't change a ton
+        elif next_pass_data["max_alt_time"] == None or next_pass_data["max_alt"] == None:
+            logging.warning("failed to update pass data: %s" % self.next_pass_data)
+            return False
+
         else:
             self.next_pass_data = next_pass_data
             # note we may change this time to avoid correcting during an RX
@@ -466,19 +470,36 @@ parsed:
             # and note those frequencies
             self.update_optimal_pass_freqs(self.next_pass_data["max_alt"])
 
-            logging.info("updated pass data with:\n%s\nchannels: %d -> %d\nfreqs: %d -> %d" % \
+            logging.info("updated pass data with:\n%s\nchannels: %d -> %d\nfreqs: %f -> %f" % \
                 (self.next_pass_data, self.radio_inbound_channel, self.radio_outbound_channel, \
-                self.get_radio_inbound_freq_hz(), self.get_radio_outbound_freq_hz()))
+                self.get_radio_inbound_freq_hz()/10.0e6, self.get_radio_outbound_freq_hz()/10.0e6))
             return True
 
     ##################################################################
     # External interface for control
     ##################################################################
+    def set_logging_level(self, level):
+        logging.getLogger().setLevel(level)
+
+    def get_station_config(self):
+        return {
+            "lat": self.station_lat,
+            "lon": self.station_lon,
+            "alt": self.station_alt,
+            "name": station.station_name
+        }
+
     def get_last_data_rx(self):
         return self.last_data_rx
 
     def get_last_packet_rx(self):
         return self.last_packet_rx
+
+    def get_doppler_correct_time(self):
+        return self.doppler_correct_time
+
+    def get_update_pass_data_time(self):
+        return self.update_pass_data_time
 
     def get_radio_inbound_freq_hz(self):
         return self.RADIO_BASE_FREQ_HZ + self.get_radio_doppler_correction()
@@ -492,16 +513,29 @@ parsed:
         # (absolute dopppler correction)
         return self.RADIO_FREQ_STEP_HZ * self.radio_inbound_channel/2
 
+    def get_next_pass_data(self):
+        return self.next_pass_data
+
     def get_rx_buf(self):
         return self.rx_buf
 
-    def send_tx_cmd(self, cmd, response, immediate=False):
+    def get_tx_cmd_queue(self):
+        return self.tx_cmd_queue
+
+    def send_tx_cmd(self, cmd, immediate=False):
         """ Queues the given transmit command name and expected response to
         be transmitted when best, or sets it to transmit immediately and
-        continually if immediate is set """
+        continually if immediate is set.
+        Returns whether the uplink cmd was valid. """
+        if not config.UPLINK_RESPONSES.has_key(cmd):
+            return False
+        response = config.UPLINK_RESPONSES[cmd]
+
         self.tx_cmd_queue.append({"cmd": cmd, "response": response})
         if not self.only_send_tx_cmd and immediate:
             self.only_send_tx_cmd = True
+        logging.info("uplink command%s submitted: %s" % ("immediate" if immediate else "", cmd))
+        return True
 
     def cancel_immediate_tx_cmd(self, remove=True):
         self.only_send_tx_cmd = False
@@ -515,15 +549,15 @@ parsed:
 
 
 def main():
-    preconfig = False
-    if len(sys.argv) >= 2 and sys.argv[1] == "preconfig":
-        preconfig = True
+    radio_preconfig = False
+    if len(sys.argv) >= 2 and sys.argv[1] == "radio_preconfig":
+        radio_preconfig = True
 
     gs = EQUiStation()
     if USE_TEST_FILE:
-        gs.run(ser_infilename=TEST_INFILE, ser_outfilename=TEST_OUTFILE, preconfig=preconfig)
+        gs.run(ser_infilename=TEST_INFILE, ser_outfilename=TEST_OUTFILE, radio_preconfig=radio_preconfig)
     else:
-        gs.run(serial_port=config.SERIAL_PORT, serial_baud=config.SERIAL_BAUD, preconfig=preconfig)
+        gs.run(serial_port=config.SERIAL_PORT, serial_baud=config.SERIAL_BAUD, radio_preconfig=radio_preconfig)
 
 if __name__ == "__main__":
     #print(trim_buffer("cats are cool", 4, 4)) # should be "cool"

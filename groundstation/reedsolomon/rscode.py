@@ -32,7 +32,6 @@ def decode(hex_data, npar=NPAR):
     p2 = subprocess.Popen([EXEC_DIR + '/rsdecode', str(hex_data), str(npar)],\
         stdout=subprocess.PIPE)
     decoded_msg, err = p2.communicate()
-    print(decoded_msg, err, p2.returncode)
 
     if p2.returncode == 1:
         return "", ERROR.INVALID_HEX
