@@ -28,7 +28,7 @@ def enterCommandMode(ser, dealer_access=False, retries=DEFAULT_RETRIES, retry_de
 	Returns whether dealer_access mode was successful entered if selected """
 	logging.debug("Setting radio to command mode")
 	time.sleep(0.1)
-	_, rx_buf1 = sendConfigCommand(ser, "+++")
+	_, rx_buf1 = sendConfigCommand(ser, "+++", retries=0)
 	time.sleep(0.1)
 	if dealer_access:
 		okay, rx_buf2 = sendConfigCommand(ser, set_dealer_mode_buf, \
@@ -46,10 +46,10 @@ def sendConfigCommand(ser, buf, retries=DEFAULT_RETRIES, retry_delay_s=DEFAULT_R
 	Returns whether a valid response was recieved and all data recieved over RX """
 	okay = False
 	rx_buf = ""
-	retry = 0
+	retry = -1
 	while retry < retries and not okay:
 		logging.debug("sending radio command%s: %s" % \
-			("" if retry == 0 else "(try %d)"%i, binascii.hexlify(buf)))
+			("" if retry < 0 else "(try %d)"%(retry+1), binascii.hexlify(buf)))
 		ser.write(buf)
 		oldtime = time.time()
 		while (time.time() - oldtime) < 2:
@@ -59,7 +59,10 @@ def sendConfigCommand(ser, buf, retries=DEFAULT_RETRIES, retry_delay_s=DEFAULT_R
 				logging.debug("got radio command response: " + binascii.hexlify(data))
 				okay = True # TODO: actually read packet and then quit if correct
 			time.sleep(0.25)
-		time.sleep(retry_delay_s)
+                retry += 1
+                if retry < retries:
+    		    time.sleep(retry_delay_s)
+
 	return okay, rx_buf
 
 def getSetFreqCommandBuf(freqInHZ, channelNum, isTX):
