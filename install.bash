@@ -8,7 +8,7 @@ pip install -r requirements.txt
 make -C ./groundstation/reedsolomon
 
 # systemctl startup service
-cp ./equistation.service /usr/lib/systemd/user/
+cp ./equistation.service /etc/systemd/system/
 sudo systemctl enable equistation.service
 sudo systemctl start equistation.service
 

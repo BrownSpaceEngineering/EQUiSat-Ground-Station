@@ -25,14 +25,14 @@ import station_config as station
 import config
 
 # testing config
-USE_TEST_FILE = True
+USE_TEST_FILE = False
 GENERATE_FAKE_PASSES = True # see below for params
 RUN_TEST_UPLINKS = True
 TEST_INFILE = "../Test Dumps/test_packet_logfile.txt"
 TEST_OUTFILE = "groundstation_serial_out.txt"
 
 class EQUiStation:
-    DEFAULT_LOGGING_LEVEL = logging.INFO
+    DEFAULT_LOGGING_LEVEL = logging.DEBUG
 
     # RX config
     PACKET_PUB_ROUTE = "http://api.brownspace.org/equisat/receive_data"
@@ -233,6 +233,8 @@ class EQUiStation:
         """ Shifts the scheduled doppler correction to be centered between
             times of satellite transmissions to avoid missing data during the radio update """
         epoch = self.last_packet_rx # TODO: maybe actually self.last_data_rx if we get bad data?
+        if epoch == None:
+            return # nothing can be done
         delta_to_doppler = (self.doppler_correct_time - epoch).total_seconds()
         remainder = delta_to_doppler % self.PACKET_SEND_FREQ_S
 
