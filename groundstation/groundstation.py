@@ -370,7 +370,7 @@ parsed:
         logging.info("preconfiguring radio channels...")
         # enter command mode and set default (no shift channel) - mainly for testing
         enter_okay, rx1 = radio_control.enterCommandMode(self.ser, dealer_access=True)
-        def_okay, rx2 = self.radio_set_freq(self.RADIO_BASE_FREQ_HZ, 1)
+        def_okay, rx2 = radio_control.setFreq(self.RADIO_BASE_FREQ_HZ, 1)
         self.rx_buf += rx1 + rx2
 
         # set shifted channels
@@ -378,9 +378,9 @@ parsed:
         channel = 2
         for shift in (0, 3*self.RADIO_FREQ_STEP_HZ, self.RADIO_FREQ_STEP_HZ):
             # set inbound and outbound pair of channels
-            in_okay, rx1 = self.radio_set_freq(self.RADIO_BASE_FREQ_HZ + shift, channel)
+            in_okay, rx1 = radio_control.setFreq(self.RADIO_BASE_FREQ_HZ + shift, channel)
             channel += 1
-            out_okay, rx2 = self.radio_set_freq(self.RADIO_BASE_FREQ_HZ - shift, channel)
+            out_okay, rx2 = radio_control.setFreq(self.RADIO_BASE_FREQ_HZ - shift, channel)
             # update
             channel += 1
             mid_channels_okay = in_okay and out_okay
@@ -393,11 +393,6 @@ parsed:
         okay = enter_okay and def_okay and mid_channels_okay and exit_okay
         logging.info("preconfigured radio channels: %s" % "success" if okay else "FAILURE")
         return okay
-
-    def radio_set_freq(self, freq, channel):
-        rx_okay, rx1 = radio_control.setRxFreq(self.ser, freq, channel)
-        tx_okay, rx2 = radio_control.setTxFreq(self.ser, freq, channel)
-        return rx_okay and tx_okay, rx1 + rx2
 
     ##################################################################
     # Doppler correct helpers
