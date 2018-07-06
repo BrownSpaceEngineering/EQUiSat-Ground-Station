@@ -13,6 +13,9 @@ DEFAULT_RETRIES = 5
 DEFAULT_RETRY_DELAY = 0.4
 RADIO_FREQ_STEP_HZ = 6250
 
+START_OF_HEADER = bytearray(b'\x01')
+TERMINATOR = bytearray(b'\x00')
+
 # radio config settings
 set_dealer_mode_buf = bytearray(b'\x01\x44\x01\xba\x00')
 set_tx_freq = bytearray(b'\x01\x37\x01\x19\xf5\xf7\x30\x90\x00')
@@ -31,26 +34,27 @@ def enterCommandMode(ser, dealer_access=False, retries=DEFAULT_RETRIES, retry_de
     Returns whether dealer_access mode was successful entered if selected """
     logging.debug("Setting radio to command mode")
     time.sleep(0.1)
-    _, rx_buf1 = sendConfigCommand(ser, "+++", retries=0)
+    _, rx_buf1, _ = sendConfigCommand(ser, "+++", "", retries=0)
     time.sleep(0.1)
     if dealer_access:
-        okay, rx_buf2 = sendConfigCommand(ser, set_dealer_mode_buf, \
+        okay, rx_buf2, response = sendConfigCommand(ser, set_dealer_mode_buf, b'\xc4', \
             retries=retries, retry_delay_s=retry_delay_s)
-        return okay, rx_buf1 + rx_buf2
+        return okay and response == bytearray(b'\x00'), rx_buf1 + rx_buf2
     else:
         return True, rx_buf1
 
 def exitCommandMode(ser, retries=DEFAULT_RETRIES, retry_delay_s=DEFAULT_RETRY_DELAY):
     logging.debug("Setting radio to normal mode")
-    return sendConfigCommand(ser, warm_reset, retries=retries, retry_delay_s=retry_delay_s)
+    res = sendConfigCommand(ser, warm_reset, b'\x9d', retries=retries, retry_delay_s=retry_delay_s)
+    return validateConfigResponse(b'\x00', res)
 
-def sendConfigCommand(ser, buf, retries=DEFAULT_RETRIES, retry_delay_s=DEFAULT_RETRY_DELAY):
+def sendConfigCommand(ser, buf, response_cmd, response_size=1, \
+        retries=DEFAULT_RETRIES, retry_delay_s=DEFAULT_RETRY_DELAY):
     """ Sends the given config command to the radio over the given serial line.
-    Returns whether a valid response was recieved and all data recieved over RX """
-    okay = False
+    Returns whether a valid response was recieved, all data recieved over RX, and the response args """
     rx_buf = ""
     retry = -1
-    while retry < retries and not okay:
+    while retry < retries:
         logging.debug("sending radio command%s: %s" % \
             ("" if retry < 0 else " (try %d)"%(retry+1), binascii.hexlify(buf)))
         ser.write(buf)
@@ -59,19 +63,60 @@ def sendConfigCommand(ser, buf, retries=DEFAULT_RETRIES, retry_delay_s=DEFAULT_R
             if ser.in_waiting > 0:
                 data = ser.read(size=ser.in_waiting)
                 rx_buf += data
-                logging.debug("got radio command response: " + binascii.hexlify(data))
-                okay = True # TODO: actually read packet and then quit if correct
-            time.sleep(0.25)
-            retry += 1
-            if retry < retries:
-                time.sleep(retry_delay_s)
 
-    return okay, rx_buf
+                okay, response = checkCommandResponse(data, response_cmd, response_size)
+                logging.debug("got radio command response (%s; %s): %s" % \
+                        (okay, binascii.hexlify(response), binascii.hexlify(data)))
+                if okay or response_cmd == "":
+                    return True, rx_buf, response
+
+            time.sleep(0.25)
+
+        retry += 1
+        if retry < retries:
+            time.sleep(retry_delay_s)
+
+    return False, rx_buf, bytearray()
+
+def checkCommandResponse(buf, response_cmd, response_size):
+    """ Checks for a valid response with a payload of size response_size in the buffer 
+    and returns the contents of the response """
+    if response_cmd == "":
+        return False, bytearray()
+    start = buf.find(START_OF_HEADER)
+    # checks 
+    if start == -1:
+        return False, bytearray()
+    if len(buf)-start < 1 + response_size + 1:
+        return False, bytearray()
+
+    response = buf[start+2:start+2+response_size]
+    if buf[start+1] != bytearray(response_cmd):
+        return False, response # may not be valid
+
+    # check checksum
+    payload = bytearray(buf[start+1:start+2+response_size])
+    expected_checksum = computeChecksum(payload)
+    actual_checksum = buf[start+2+response_size]
+    if expected_checksum != actual_checksum:
+        return False, response
+    return True, response
+
+def validateConfigResponse(expected, rets):
+    """ Given the expected response and the three return values of sendConfigCommand, 
+    returns whether the command was correct and the full rx buffer """
+    return rets[0] and rets[2] == expected, rets[1]
 
 def computeChecksum(payload):
     """ Returns the checksum byte for the given payload
     (should not include start of header) """
     return chr(~(sum(payload) % 255) & 255) #checksum is sum of bytes (not including start of header) mod 0xFF, then one's complement
+
+def buildCommand(command_code, args=''):
+    """ Builds a command out of a payload according to XDL specs """
+    payload = bytearray(command_code) + bytearray(args)
+    checksum = computeChecksum(payload)
+    return START_OF_HEADER + payload + checksum + TERMINATOR
 
 def getSetFreqCommandBuf(freqInHZ, channelNum, isTX):
     #structure is [Start of Header, Command #, Channel #, Freq Byte #1, Freq Byte #2, Freq Byte #3, Freq Byte #4, checksum]
@@ -96,7 +141,8 @@ def setChannel(ser, channelNum, retries=DEFAULT_RETRIES, retry_delay_s=DEFAULT_R
     command_buf_payload = command_type_byte + channel_num_byte
     checksum_byte = computeChecksum(command_buf_payload)
     full_command_buf = start_of_header + command_buf_payload + checksum_byte + bytearray(b'\x00') #need to null terminate string
-    return sendConfigCommand(ser, full_command_buf, retries=retries, retry_delay_s=retry_delay_s)
+    rets = sendConfigCommand(ser, full_command_buf, b'\x83', retries=retries, retry_delay_s=retry_delay_s)
+    return validateConfigResponse(b'\x00', rets)
 
 def addChannel(ser, channelNum, rxFreqInHz, txFreqInHz, bandwidthInHz, \
         retries=DEFAULT_RETRIES, retry_delay_s=DEFAULT_RETRY_DELAY):
@@ -112,43 +158,56 @@ def addChannel(ser, channelNum, rxFreqInHz, txFreqInHz, bandwidthInHz, \
     command_buf_payload = command_type_byte + channel_num_byte + rx_freq_bytes + tx_freq_bytes + bandwidth_bytes
     checksum_byte = computeChecksum(command_buf_payload)
     full_command_buf = start_of_header + command_buf_payload + checksum_byte + bytearray(b'\x00')  #need to null terminate string
-    return sendConfigCommand(ser, full_command_buf, retries=retries, retry_delay_s=retry_delay_s)
+    rets = sendConfigCommand(ser, full_command_buf, b'\xf0', retries=retries, retry_delay_s=retry_delay_s)
+    return validateConfigResponse(b'\x00', rets) # TODO
 
 def setRxFreq(ser, freqInHZ, channelNum, retries=DEFAULT_RETRIES, retry_delay_s=DEFAULT_RETRY_DELAY):
     """ Sets the radio's RX frequency for the given channel. freqInHZ must be a multiple of 6250 """
     if freqInHZ % RADIO_FREQ_STEP_HZ != 0:
         return False, ""
     setRxCommandBuf = getSetFreqCommandBuf(freqInHZ, channelNum, False)
-    return sendConfigCommand(ser, setRxCommandBuf, retries=retries, retry_delay_s=retry_delay_s)
+    rets = sendConfigCommand(ser, setRxCommandBuf, b'\xb9', retries=retries, retry_delay_s=retry_delay_s)
+    return validateConfigResponse(b'\x00', rets)
 
 def setTxFreq(ser, freqInHZ, channelNum, retries=DEFAULT_RETRIES, retry_delay_s=DEFAULT_RETRY_DELAY):
     """ Sets the radio's TX frequency for the given channel. freqInHZ must be a multiple of 6250 """
     if freqInHZ % RADIO_FREQ_STEP_HZ != 0:
         return False, ""
     setTxCommandBuf = getSetFreqCommandBuf(freqInHZ, channelNum, True)
-    return sendConfigCommand(ser, setTxCommandBuf, retries=retries, retry_delay_s=retry_delay_s)
+    rets = sendConfigCommand(ser, setTxCommandBuf, b'\xb7', retries=retries, retry_delay_s=retry_delay_s)
+    return validateConfigResponse(b'\x00', rets)
 
-def setFreq(self, freq, channel):
+def setFreq(ser, freq, channel):
     """ Sets TX and RX frequency and returns success, buffer. """
-    rx_okay, rx1 = radio_control.setRxFreq(self.ser, freq, channel)
-    tx_okay, rx2 = radio_control.setTxFreq(self.ser, freq, channel)
+    rx_okay, rx1 = setRxFreq(ser, freq, channel)
+    tx_okay, rx2 = setTxFreq(ser, freq, channel)
     return rx_okay and tx_okay, rx1 + rx2
+
+def getRxFreq(ser, channel):
+    command = buildCommand(b'\x3a', chr(channel))
+    rets = sendConfigCommand(ser, command, b'\xba')
+    return validateConfigResponse(b'\x00', rets)
+
+def getTxFreq(ser, channel):
+    command = buildCommand(b'\x38', chr(channel))
+    rets = sendConfigCommand(ser, command, b'\xb8')
+    return validateConfigResponse(b'\x00', rets)
 
 def configRadio(ser):
     enterCommandMode(ser)
-    dealer_okay, _ = sendConfigCommand(ser, set_dealer_mode_buf)
+    dealer_okay, _, _ = sendConfigCommand(ser, set_dealer_mode_buf, b'\xc4')
     logging.info("Setting Channel")
-    channel_okay, _ = sendConfigCommand(ser, set_channel)
+    channel_okay, _, _ = sendConfigCommand(ser, set_channel, b'\x83')
     logging.info("Setting rx freq")
-    rx_okay, _ = sendConfigCommand(ser, set_rx_freq)
+    rx_okay, _, _ = sendConfigCommand(ser, set_rx_freq, b'\xb9')
     logging.info("Setting tx freq")
-    tx_okay, _ = sendConfigCommand(ser, set_tx_freq)
+    tx_okay, _, _  = sendConfigCommand(ser, set_tx_freq, b'\xb7')
     logging.info("setting bandwidth")
-    bandwidth_okay, _ = sendConfigCommand(ser, set_bandwidth)
+    bandwidth_okay, _, _ = sendConfigCommand(ser, set_bandwidth, b'\xf0')
     logging.info("setting modulation")
-    modulation_okay, _ = sendConfigCommand(ser, set_modulation)
+    modulation_okay, _, _ = sendConfigCommand(ser, set_modulation, b'\xab')
     logging.info("programming")
-    program_okay, _ = sendConfigCommand(ser, program)
+    program_okay, _, _ = sendConfigCommand(ser, program, b'\x9e')
     exit_okay, _ = exitCommandMode(ser)
     return dealer_okay and channel_okay and rx_okay and tx_okay \
         and bandwidth_okay and modulation_okay and program_okay and exit_okay
