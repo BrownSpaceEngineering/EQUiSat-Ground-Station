@@ -27,7 +27,7 @@ import config
 # testing config
 USE_TEST_FILE = False
 GENERATE_FAKE_PASSES = True # see below for params
-RUN_TEST_UPLINKS = True
+RUN_TEST_UPLINKS = False
 TEST_INFILE = "../Test Dumps/test_packet_logfile.txt"
 TEST_OUTFILE = "groundstation_serial_out.txt"
 
@@ -150,7 +150,7 @@ class EQUiStation:
         # look for (and extract/send) any packets in the buffer, trimming
         # the buffer after finding any. (Only finds full packets)
         got_packet = self.scan_for_packets()
-
+    
         # if we got a packet, update the last packet rx time to when we got data
         if got_packet:
             self.last_packet_rx = self.last_data_rx
@@ -265,7 +265,7 @@ class EQUiStation:
             to a server. Also trims the buffer before the end of the last packet.
             Returns whether any packets were found.
         """
-        logging.debug("reading buffer of size %d for packets" % len(self.rx_buf))
+        #logging.debug("reading buffer of size %d for packets" % len(self.rx_buf))
         packets, indexes = EQUiStation.extract_packets(self.rx_buf)
         if len(packets) == 0:
             return False
@@ -369,8 +369,8 @@ parsed:
         """
         logging.info("preconfiguring radio channels...")
         # enter command mode and set default (no shift channel) - mainly for testing
-        enter_okay, rx1 = radio_control.enterCommandMode(self.ser, dealer_access=True)
-        def_okay, rx2 = radio_control.setFreq(self.RADIO_BASE_FREQ_HZ, 1)
+        enter_okay, rx1 = radio_control.enterCommandMode(self.ser, dealer=True)
+        def_okay, rx2 = radio_control.setFreq(self.ser, self.RADIO_BASE_FREQ_HZ, 1)
         self.rx_buf += rx1 + rx2
 
         # set shifted channels
@@ -378,9 +378,9 @@ parsed:
         channel = 2
         for shift in (0, 3*self.RADIO_FREQ_STEP_HZ, self.RADIO_FREQ_STEP_HZ):
             # set inbound and outbound pair of channels
-            in_okay, rx1 = radio_control.setFreq(self.RADIO_BASE_FREQ_HZ + shift, channel)
+            in_okay, rx1 = radio_control.setFreq(self.ser, self.RADIO_BASE_FREQ_HZ + shift, channel)
             channel += 1
-            out_okay, rx2 = radio_control.setFreq(self.RADIO_BASE_FREQ_HZ - shift, channel)
+            out_okay, rx2 = radio_control.setFreq(self.ser, self.RADIO_BASE_FREQ_HZ - shift, channel)
             # update
             channel += 1
             mid_channels_okay = in_okay and out_okay
@@ -547,7 +547,7 @@ parsed:
 
 def main():
     radio_preconfig = False
-    if len(sys.argv) >= 2 and sys.argv[1] == "radio_preconfig":
+    if len(sys.argv) >= 2 and sys.argv[1] == "preconfig":
         radio_preconfig = True
 
     gs = EQUiStation()
