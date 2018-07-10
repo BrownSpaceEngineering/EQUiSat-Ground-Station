@@ -18,8 +18,8 @@ TERMINATOR = bytearray(b'\x00')
 
 # radio config settings
 set_dealer_mode_buf = bytearray(b'\x01\x44\x01\xba\x00')
-set_tx_freq = bytearray(b'\x01\x37\x01\x19\xf5\xf7\x30\x90\x00')
-set_rx_freq = bytearray(b'\x01\x39\x01\x19\xf5\xf7\x30\x8e\x00')
+set_tx_freq = bytearray(b'\x01\x37\x01\x19\xf5\xf7\x30\x92\x00')
+set_rx_freq = bytearray(b'\x01\x39\x01\x19\xf5\xf7\x30\x90\x00')
 get_tx_freq = bytearray(b'\x01\x38\x01\xc6\x00')
 get_rx_freq = bytearray(b'\x01\x3a\x01\xc4\x00')
 set_channel = bytearray(b'\x01\x03\x01\xfb\x00')
@@ -29,14 +29,14 @@ program = bytearray(b'\x01\x1e\xe1\x00')
 warm_reset = bytearray(b'\x01\x1d\x01\xe1\x00')
 delete_channel = bytearray(b'\x01\x70\x01\x01\x8d\x00')
 
-def enterCommandMode(ser, dealer_access=False, retries=DEFAULT_RETRIES, retry_delay_s=DEFAULT_RETRY_DELAY):
+def enterCommandMode(ser, dealer=False, retries=DEFAULT_RETRIES, retry_delay_s=DEFAULT_RETRY_DELAY):
     """ Sets the radio to be in command mode, optimally with full dealer access
     Returns whether dealer_access mode was successful entered if selected """
     logging.debug("Setting radio to command mode")
     time.sleep(0.1)
     _, rx_buf1, _ = sendConfigCommand(ser, "+++", "", retries=0)
     time.sleep(0.1)
-    if dealer_access:
+    if dealer:
         okay, rx_buf2, response = sendConfigCommand(ser, set_dealer_mode_buf, b'\xc4', \
             retries=retries, retry_delay_s=retry_delay_s)
         return okay and response == bytearray(b'\x00'), rx_buf1 + rx_buf2
@@ -87,7 +87,7 @@ def checkCommandResponse(buf, response_cmd, response_size):
     # checks 
     if start == -1:
         return False, bytearray()
-    if len(buf)-start < 1 + response_size + 1:
+    if len(buf)-start < 1 + response_size + 1: # start of header, response, checksum
         return False, bytearray()
 
     response = buf[start+2:start+2+response_size]
@@ -105,12 +105,13 @@ def checkCommandResponse(buf, response_cmd, response_size):
 def validateConfigResponse(expected, rets):
     """ Given the expected response and the three return values of sendConfigCommand, 
     returns whether the command was correct and the full rx buffer """
-    return rets[0] and rets[2] == expected, rets[1]
+    return rets[0] and rets[2][0] == expected, rets[1]
 
 def computeChecksum(payload):
     """ Returns the checksum byte for the given payload
     (should not include start of header) """
-    return chr(~(sum(payload) % 255) & 255) #checksum is sum of bytes (not including start of header) mod 0xFF, then one's complement
+    # checksum is one's complement of the LSB of the sum of the bytes
+    return chr(~sum(payload) & 255) 
 
 def buildCommand(command_code, args=''):
     """ Builds a command out of a payload according to XDL specs """
@@ -159,7 +160,7 @@ def addChannel(ser, channelNum, rxFreqInHz, txFreqInHz, bandwidthInHz, \
     checksum_byte = computeChecksum(command_buf_payload)
     full_command_buf = start_of_header + command_buf_payload + checksum_byte + bytearray(b'\x00')  #need to null terminate string
     rets = sendConfigCommand(ser, full_command_buf, b'\xf0', retries=retries, retry_delay_s=retry_delay_s)
-    return validateConfigResponse(b'\x00', rets) # TODO
+    return validateConfigResponse(b'\x00', rets) 
 
 def setRxFreq(ser, freqInHZ, channelNum, retries=DEFAULT_RETRIES, retry_delay_s=DEFAULT_RETRY_DELAY):
     """ Sets the radio's RX frequency for the given channel. freqInHZ must be a multiple of 6250 """
@@ -185,17 +186,16 @@ def setFreq(ser, freq, channel):
 
 def getRxFreq(ser, channel):
     command = buildCommand(b'\x3a', chr(channel))
-    rets = sendConfigCommand(ser, command, b'\xba')
+    rets = sendConfigCommand(ser, command, b'\xba', response_size=5)
     return validateConfigResponse(b'\x00', rets)
 
 def getTxFreq(ser, channel):
     command = buildCommand(b'\x38', chr(channel))
-    rets = sendConfigCommand(ser, command, b'\xb8')
+    rets = sendConfigCommand(ser, command, b'\xb8', response_size=5)
     return validateConfigResponse(b'\x00', rets)
 
 def configRadio(ser):
-    enterCommandMode(ser)
-    dealer_okay, _, _ = sendConfigCommand(ser, set_dealer_mode_buf, b'\xc4')
+    enterCommandMode(ser, dealer=True)
     logging.info("Setting Channel")
     channel_okay, _, _ = sendConfigCommand(ser, set_channel, b'\x83')
     logging.info("Setting rx freq")
@@ -209,7 +209,7 @@ def configRadio(ser):
     logging.info("programming")
     program_okay, _, _ = sendConfigCommand(ser, program, b'\x9e')
     exit_okay, _ = exitCommandMode(ser)
-    return dealer_okay and channel_okay and rx_okay and tx_okay \
+    return channel_okay and rx_okay and tx_okay \
         and bandwidth_okay and modulation_okay and program_okay and exit_okay
 
 if __name__ == "__main__":
