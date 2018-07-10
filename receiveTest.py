@@ -5,6 +5,7 @@
 
 import os, sys, datetime, time
 import serial
+import binascii
 
 dumps_direc = "./receiveTest_dumps"
 def generate_new_outfile():
@@ -18,6 +19,7 @@ def generate_new_outfile():
 # defaults
 output_file = generate_new_outfile()
 serial_port = "/dev/ttyAMA0"
+in_hex = False
 
 # parse CLI args
 if len(sys.argv) >= 2:
@@ -34,6 +36,8 @@ try:
                 while True:
                     try:
                         data = ser.read(size=1)
+                        if in_hex: 
+                            data = binascii.hexlify(data)
                         f.write(data)
                         f.flush()
                         sys.stdout.write(data)
