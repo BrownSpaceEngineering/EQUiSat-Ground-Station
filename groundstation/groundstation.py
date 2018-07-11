@@ -2,14 +2,12 @@
 # The primary script for reading incoming transmissions from
 # the XDL Micro over serial, performing error correcting, and
 # sending the data to BSE's server.
-import os
 import sys
 import re
 import serial
 import time
-import datetime
 import logging
-from binascii import hexlify, unhexlify
+from binascii import hexlify
 import requests
 from collections import OrderedDict
 
@@ -25,14 +23,16 @@ import station_config as station
 import config
 
 # testing config
-USE_TEST_FILE = False
+USE_TEST_FILE = True
 GENERATE_FAKE_PASSES = True # see below for params
-RUN_TEST_UPLINKS = False
+RUN_TEST_UPLINKS = True
 TEST_INFILE = "../Test Dumps/test_packet_logfile.txt"
 TEST_OUTFILE = "groundstation_serial_out.txt"
 
 class EQUiStation:
-    DEFAULT_LOGGING_LEVEL = logging.DEBUG
+    DEFAULT_CONSOLE_LOGGING_LEVEL = logging.INFO
+    LOG_FORMAT = '%(levelname)s [%(asctime)s]: %(message)s'
+    LOGFILE = "groundstation.log"
 
     # RX config
     PACKET_PUB_ROUTE = "http://api.brownspace.org/equisat/receive_data"
@@ -43,13 +43,12 @@ class EQUiStation:
         (CALLSIGN_HEX, PACKET_STR_LEN-len(CALLSIGN_HEX)))
 
     # doppler correction config
-    ORBITAL_PERIOD_S = 93*60 if not GENERATE_FAKE_PASSES else 90
-    TRACKING_API_ROUTE = "http://127.0.0.1/api"
+    ORBITAL_PERIOD_S = 93*60 if not GENERATE_FAKE_PASSES else 240
     RADIO_BASE_FREQ_HZ = int(435.55*10e6)
     RADIO_FREQ_STEP_HZ = radio_control.RADIO_FREQ_STEP_HZ
-    RADIO_INBOUND_CHAN = 2
-    RADIO_OUTBOUND_CHAN = 3
+    RADIO_MAX_SETCHAN_RETRIES = 2
     DOPPLER_MAX_ELEV_THRESH = 20 # deg
+    DOPPLER_FAIL_RETRY_DELAY_S = 1.2*60 # time to delay before retrying doppler connect
     PACKET_SEND_FREQ_S = 20
 
     def __init__(self):
@@ -76,15 +75,25 @@ class EQUiStation:
 
         self.ser = None
         self.tracker = tracking.SatTracker(config.SAT_CATALOG_NUMBER)
-        logging.basicConfig(format='%(asctime)s %(message)s', level=self.DEFAULT_LOGGING_LEVEL)
+
+        # config logging
+        logging.basicConfig(
+            filename=self.LOGFILE,
+            format=self.LOG_FORMAT,
+            level=logging.DEBUG
+        )
+        self.console = logging.StreamHandler()
+        self.console.setLevel(self.DEFAULT_CONSOLE_LOGGING_LEVEL)
+        self.console.setFormatter(logging.Formatter(self.LOG_FORMAT))
+        logging.getLogger().addHandler(self.console)
 
     ##################################################################
     # Groundstation state machine
     ##################################################################
-    def run(self, serial_port=None, serial_baud=38400, radio_preconfig=False, \
+    def run(self, serial_port=None, serial_baud=38400, radio_preconfig=False,
         ser_infilename=None, ser_outfilename=None, file_read_size=PACKET_STR_LEN):
         try:
-            if ser_infilename != None and ser_outfilename != None:
+            if ser_infilename is not None and ser_outfilename is not None:
                 with mock_serial.MockSerial(infile_name=ser_infilename, outfile_name=ser_outfilename, max_inwaiting=file_read_size) as ser:
                     self.ser = ser
                     self.mainloop(radio_preconfig=radio_preconfig)
@@ -128,7 +137,7 @@ class EQUiStation:
                 # and then try to adjust the frequency for doppler effects
                 self.correct_for_doppler()
 
-                time.sleep(0.1)
+                time.sleep(0.5)
 
             except KeyboardInterrupt:
                 break
@@ -158,8 +167,7 @@ class EQUiStation:
         # also try and trim the buffer if it exceeds a max size,
         # making sure to leave at least a packet's worth of characters
         # in case one is currently coming in
-        self.rx_buf = EQUiStation.trim_buffer(self.rx_buf, self.MAX_BUF_SIZE,\
-            self.PACKET_STR_LEN)
+        self.rx_buf = EQUiStation.trim_buffer(self.rx_buf, self.MAX_BUF_SIZE, self.PACKET_STR_LEN)
 
         return got_packet
 
@@ -172,7 +180,7 @@ class EQUiStation:
             command = self.tx_cmd_queue.pop(0)
             logging.info("SENDING UPLINK COMMAND: %s" % command)
 
-            got_response, rx = transmit.sendUplink(command["cmd"], \
+            got_response, rx = transmit.sendUplink(command["cmd"],
                 command["response"], self.ser)
             self.rx_buf += rx
 
@@ -204,14 +212,18 @@ class EQUiStation:
         # settings to be ready for the next pass
         if now >= self.update_pass_data_time and not self.ready_for_next_pass:
             good = self.update_radio_for_pass()
-            # keep trying again on any failure
             if good:
                 self.ready_for_next_pass = True
                 # (NOTE: doppler_correct_time updated in above function)
                 # schedule the next update (tentatively) for an orbital period away
                 self.update_pass_data_time = datetime.datetime.now() + \
                     datetime.timedelta(seconds=EQUiStation.ORBITAL_PERIOD_S)
-            return good
+                return True
+            else:
+                # keep trying again on any failure, but delay it a bit
+                self.update_pass_data_time = datetime.datetime.now() + \
+                    datetime.timedelta(seconds=EQUiStation.DOPPLER_FAIL_RETRY_DELAY_S)
+                return False
 
         # otherwise, if we've just passed the point of max elevation,
         # swap the frequency to be the outbound-corrected one
@@ -232,8 +244,8 @@ class EQUiStation:
     def interlace_doppler_and_tx_times(self):
         """ Shifts the scheduled doppler correction to be centered between
             times of satellite transmissions to avoid missing data during the radio update """
-        epoch = self.last_packet_rx # TODO: maybe actually self.last_data_rx if we get bad data?
-        if epoch == None:
+        epoch = self.last_data_rx # TODO: self.last_packet_rx if we are getting good data
+        if epoch is None:
             return # nothing can be done
         delta_to_doppler = (self.doppler_correct_time - epoch).total_seconds()
         remainder = delta_to_doppler % self.PACKET_SEND_FREQ_S
@@ -274,13 +286,13 @@ class EQUiStation:
         for raw in packets:
             logging.info("FOUND PACKET, correcting & sending...")
             corrected, error = EQUiStation.correct_packet_errors(raw)
-            errors_corrected = error == None
+            errors_corrected = error is None
 
             # parse if was corrected
             parsed = {}
             if errors_corrected:
                 parsed, err = packetparse.parse_packet(corrected)
-                if err != None:
+                if err is not None:
                     logging.error("error parsing packet: %s" % err)
 
             # post packet to API
@@ -300,9 +312,14 @@ parsed:
 
     def publish_packet(self, raw, corrected, parsed, errors_corrected, route=PACKET_PUB_ROUTE):
         """ Sends a POST request to the given API route to publish the packet. """
-        json = {"raw": raw, "corrected": corrected, "transmission": parsed, \
-                "secret": station.station_secret, "station_name": station.station_name, \
-                "errors_corrected": errors_corrected }
+        json = {
+            "raw": raw,
+            "corrected": corrected,
+            "transmission": parsed,
+            "secret": station.station_secret,
+            "station_name": station.station_name,
+            "errors_corrected": errors_corrected
+        }
         # r = requests.post(route, json=json) # TODO: don't wanna spam
         # if r.status_code != requests.codes.ok:
         #     logging.warning("couldn't publish packet (%d): %s" % (r.status_code, r.text))
@@ -350,8 +367,8 @@ parsed:
 
         # apply channel change
         enter_okay, rx1 = radio_control.enterCommandMode(self.ser)
-        channel_okay, rx2 = radio_control.setChannel(self.ser, self.radio_cur_channel)
-        exit_okay, rx3 = radio_control.exitCommandMode(self.ser)
+        channel_okay, rx2 = radio_control.setChannel(self.ser, self.radio_cur_channel, retries=self.RADIO_MAX_SETCHAN_RETRIES)
+        exit_okay, rx3 = radio_control.exitCommandMode(self.ser, retries=self.RADIO_MAX_SETCHAN_RETRIES)
 
         self.rx_buf += rx1 + rx2 + rx3
         return enter_okay and channel_okay and exit_okay
@@ -452,10 +469,10 @@ parsed:
             ])
 
         # on fails, our best bet is probably to use the old pass as it won't change a ton
-        if next_pass_data == None:
+        if next_pass_data is None:
             logging.error("error retrieving next pass data")
             return False
-        elif next_pass_data["max_alt_time"] == None or next_pass_data["max_alt"] == None:
+        elif next_pass_data["max_alt_time"] is None or next_pass_data["max_alt"] is None:
             logging.warning("failed to update pass data: %s" % self.next_pass_data)
             return False
 
@@ -468,15 +485,15 @@ parsed:
             self.update_optimal_pass_freqs(self.next_pass_data["max_alt"])
 
             logging.info("updated pass data with:\n%s\nchannels: %d -> %d\nfreqs: %f -> %f" % \
-                (self.next_pass_data, self.radio_inbound_channel, self.radio_outbound_channel, \
-                self.get_radio_inbound_freq_hz()/10.0e6, self.get_radio_outbound_freq_hz()/10.0e6))
+                (self.next_pass_data, self.radio_inbound_channel, self.radio_outbound_channel,
+                    self.get_radio_inbound_freq_hz()/10.0e6, self.get_radio_outbound_freq_hz()/10.0e6))
             return True
 
     ##################################################################
     # External interface for control
     ##################################################################
     def set_logging_level(self, level):
-        logging.getLogger().setLevel(level)
+        self.console.setLevel(level)
 
     def get_station_config(self):
         return {
