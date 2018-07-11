@@ -33,6 +33,7 @@ class EQUiStation:
     DEFAULT_CONSOLE_LOGGING_LEVEL = logging.INFO
     LOG_FORMAT = '%(levelname)s [%(asctime)s]: %(message)s'
     LOGFILE = "groundstation.log"
+    RXDATA_LOGFILE = "rx_data.log"
 
     # RX config
     PACKET_PUB_ROUTE = "http://api.brownspace.org/equisat/receive_data"
@@ -41,6 +42,7 @@ class EQUiStation:
     MAX_BUF_SIZE = 4096
     packet_regex = re.compile("(%s.{%d})" % \
         (CALLSIGN_HEX, PACKET_STR_LEN-len(CALLSIGN_HEX)))
+    PERIODIC_PACKET_SCAN_FREQ_S = 2*60
 
     # doppler correction config
     ORBITAL_PERIOD_S = 93*60 if not GENERATE_FAKE_PASSES else 240
@@ -65,6 +67,7 @@ class EQUiStation:
         self.station_alt = station.station_alt
         self.doppler_correct_time = datetime.datetime.now()
         self.update_pass_data_time = datetime.datetime.now()
+        self.next_packet_scan = datetime.datetime.now()
         self.radio_cur_channel = 1 # default no correction channel
         self.radio_inbound_channel = 1
         self.radio_outbound_channel = 1
@@ -128,14 +131,20 @@ class EQUiStation:
         while True:
             try:
                 # try and receive data (a packet),
-                got_packet = self.receive() #TODO: do this even if self.only_send_tx_cmd???
+                got_packet = self.receive()
 
                 # and if we did try and send any TX commands,
                 if got_packet or self.only_send_tx_cmd:
-                    _, _ = self.transmit()
+                    self.transmit()
 
                 # and then try to adjust the frequency for doppler effects
                 self.correct_for_doppler()
+
+                # periodically perform random scans for packets in case we missed something
+                if self.next_packet_scan <= datetime.datetime.now():
+                    self.scan_for_packets()
+                    self.next_packet_scan = datetime.datetime.now() + \
+                        datetime.timedelta(seconds=self.PERIODIC_PACKET_SCAN_FREQ_S)
 
                 time.sleep(0.5)
 
@@ -146,9 +155,8 @@ class EQUiStation:
     # Groundstation states
     ##################################################################
     def receive(self):
-        """ Attempts to receive, process, and store data received from the radio.
-            Returns whether a packet was detected. """
-
+        """ Attempts to receive data and look for packets from the radio.
+         Returns whether a packet was received. """
         # grab all the data we can off the serial line
         inwaiting = self.ser.in_waiting
         if inwaiting > 0:
@@ -156,20 +164,11 @@ class EQUiStation:
             self.rx_buf += hexlify(in_data)
             self.last_data_rx = datetime.datetime.now()
 
-        # look for (and extract/send) any packets in the buffer, trimming
-        # the buffer after finding any. (Only finds full packets)
-        got_packet = self.scan_for_packets()
-    
-        # if we got a packet, update the last packet rx time to when we got data
-        if got_packet:
-            self.last_packet_rx = self.last_data_rx
-
-        # also try and trim the buffer if it exceeds a max size,
-        # making sure to leave at least a packet's worth of characters
-        # in case one is currently coming in
-        self.rx_buf = EQUiStation.trim_buffer(self.rx_buf, self.MAX_BUF_SIZE, self.PACKET_STR_LEN)
-
-        return got_packet
+            # look for (and extract/send) any packets in the buffer, trimming
+            # the buffer after finding any. (Only finds full packets)
+            # We do this here because all of the above may capture packets
+            return self.scan_for_packets()
+        return False
 
     def transmit(self):
         """ Checks if there are any uplink commands on the queue and transmits
@@ -186,6 +185,9 @@ class EQUiStation:
 
             logging.info("uplink command success: %s" % got_response)
             logging.debug("full uplink response: %s" % rx)
+
+            # look for (and extract/send) any packets in the buffer
+            self.scan_for_packets()
 
             if got_response:
                 return True, True
@@ -273,14 +275,42 @@ class EQUiStation:
     # Receive/Decode Helpers
     ##################################################################
     def scan_for_packets(self):
+        """ Scans for, processes, and sends packets, as well as performs maintenance on the RX buffer. """
+        logging.debug("reading buffer of size %d for packets" % len(self.rx_buf))
+
+        # look for (and extract/send) any packets in the buffer, trimming
+        # the buffer after finding any. (Only finds full packets)
+        got_packet, lastindex = self.scan_for_packets_helper()
+
+        # if we got a packet, update the last packet rx time to when we got data
+        if got_packet:
+            self.last_packet_rx = self.last_data_rx
+
+        # also make sure to trim the buffer to the end of the last received packet,
+        # or if it exceeds a max size trim it as well,
+        # making sure to leave at least a packet's worth of characters
+        # in case one is currently coming in
+        trimmed = ""
+        packet_remove_index = lastindex + self.PACKET_STR_LEN
+        trimmed += self.rx_buf[:packet_remove_index]
+        self.rx_buf = self.rx_buf[packet_remove_index:]
+        self.rx_buf, trimmed2 = EQUiStation.trim_buffer(self.rx_buf, self.MAX_BUF_SIZE, self.PACKET_STR_LEN)
+        trimmed += trimmed2
+
+        # write trimmed to file (that way we can be sure all rx data will get written to the file)
+        with open(self.RXDATA_LOGFILE, "a") as f:
+            f.write(trimmed)
+
+        return got_packet
+
+    def scan_for_packets_helper(self):
         """ Scans for raw HEX packets in the recieve buffer and sends any found
             to a server. Also trims the buffer before the end of the last packet.
             Returns whether any packets were found.
         """
-        #logging.debug("reading buffer of size %d for packets" % len(self.rx_buf))
         packets, indexes = EQUiStation.extract_packets(self.rx_buf)
         if len(packets) == 0:
-            return False
+            return False, 0
 
         # error correct and send packets to API
         for raw in packets:
@@ -305,10 +335,9 @@ parsed:
 %s""" % (raw, len(corrected), errors_corrected, error, corrected, parsed))
             self.publish_packet(raw, corrected, parsed, errors_corrected)
 
-        # trim buffer so it starts right past the end of last parsed packet
-        lastindex = indexes[len(indexes)-1]
-        self.rx_buf = self.rx_buf[lastindex+self.PACKET_STR_LEN:]
-        return True
+        # send last index for trimming everything before that (so we don't get these packets again)
+        lastindex = indexes[len(indexes) - 1]
+        return True, lastindex
 
     def publish_packet(self, raw, corrected, parsed, errors_corrected, route=PACKET_PUB_ROUTE):
         """ Sends a POST request to the given API route to publish the packet. """
@@ -345,12 +374,14 @@ parsed:
     @staticmethod
     def trim_buffer(buf, max_size, min_to_leave):
         """ Trims and returns the given buffer to be less than or equal to max_size,
-            but makes sure to leave at least min_to_leave of the last characters in the buffer. """
+            but makes sure to leave at least min_to_leave of the last characters in the buffer.
+            Also returns all trimmed data. """
         assert max_size >= min_to_leave
         if len(buf) > max_size:
-            return buf[len(buf)-min_to_leave:]
+            trimpoint = len(buf)-min_to_leave
+            return buf[trimpoint:], buf[:trimpoint]
         else:
-            return buf
+            return buf, ""
 
     ##################################################################
     # Radio control helpers
@@ -371,6 +402,7 @@ parsed:
         exit_okay, rx3 = radio_control.exitCommandMode(self.ser, retries=self.RADIO_MAX_SETCHAN_RETRIES)
 
         self.rx_buf += rx1 + rx2 + rx3
+        # don't scan for packets in RX buf because we're pressed for time
         return enter_okay and channel_okay and exit_okay
 
     def radio_preconfig_pass_freqs(self):

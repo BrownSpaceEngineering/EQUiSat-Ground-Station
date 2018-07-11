@@ -4,6 +4,7 @@ tle.txt
 station_config.py
 groundstation_serial_out.txt
 groundstation.log
+rx_data.log
 receiveTest_dumps
 uplink_commands.csv
 
