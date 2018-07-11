@@ -9,6 +9,7 @@ import time
 import logging
 from binascii import hexlify
 import requests
+import yagmail
 from collections import OrderedDict
 
 import mock_serial
@@ -28,6 +29,7 @@ GENERATE_FAKE_PASSES = True # see below for params
 RUN_TEST_UPLINKS = True
 TEST_INFILE = "../Test Dumps/test_packet_logfile.txt"
 TEST_OUTFILE = "groundstation_serial_out.txt"
+SEND_PACKETS = True
 
 class EQUiStation:
     DEFAULT_CONSOLE_LOGGING_LEVEL = logging.INFO
@@ -58,6 +60,7 @@ class EQUiStation:
         self.last_data_rx = None
         self.last_packet_rx = None
         self.rx_buf = ""
+        self.received_packets = []
         self.tx_cmd_queue = []
         self.only_send_tx_cmd = False
 
@@ -78,6 +81,13 @@ class EQUiStation:
 
         self.ser = None
         self.tracker = tracking.SatTracker(config.SAT_CATALOG_NUMBER)
+
+        # setup email
+        if hasattr(station, "station_gmail_user") and hasattr(station, "station_gmail_pass") \
+                and hasattr(station, "packet_email_recipients") and len(station.packet_email_recipients) > 0:
+            self.yag = yagmail.SMTP(station.station_gmail_user, station.station_gmail_pass)
+        else:
+            self.yag = None
 
         # config logging
         logging.basicConfig(
@@ -146,6 +156,9 @@ class EQUiStation:
                     self.next_packet_scan = datetime.datetime.now() + \
                         datetime.timedelta(seconds=self.PERIODIC_PACKET_SCAN_FREQ_S)
 
+                # publish any packets we got (after trying uplink commands, etc.)
+                self.publish_received_packets()
+
                 time.sleep(0.5)
 
             except KeyboardInterrupt:
@@ -179,14 +192,13 @@ class EQUiStation:
             command = self.tx_cmd_queue.pop(0)
             logging.info("SENDING UPLINK COMMAND: %s" % command)
 
-            got_response, rx = transmit.sendUplink(command["cmd"],
-                command["response"], self.ser)
+            got_response, rx = transmit.sendUplink(command["cmd"], command["response"], self.ser)
             self.rx_buf += rx
 
             logging.info("uplink command success: %s" % got_response)
             logging.debug("full uplink response: %s" % rx)
 
-            # look for (and extract/send) any packets in the buffer
+            # look for (and extract) any packets in the buffer
             self.scan_for_packets()
 
             if got_response:
@@ -275,25 +287,32 @@ class EQUiStation:
     # Receive/Decode Helpers
     ##################################################################
     def scan_for_packets(self):
-        """ Scans for, processes, and sends packets, as well as performs maintenance on the RX buffer. """
+        """ Scans for packets in the RX buffer, as well as performs maintenance on the buffer.
+        Should be run at some point whenever the buffer is updated. """
         logging.debug("reading buffer of size %d for packets" % len(self.rx_buf))
 
-        # look for (and extract/send) any packets in the buffer, trimming
-        # the buffer after finding any. (Only finds full packets)
-        got_packet, lastindex = self.scan_for_packets_helper()
+        # look for any packets in the buffer (Only finds full packets)
+        packets, indexes = EQUiStation.extract_packets(self.rx_buf)
+
+        # add all buffer trimmings to dump file
+        trimmed = ""
 
         # if we got a packet, update the last packet rx time to when we got data
-        if got_packet:
+        if len(packets) > 0:
+            logging.info("found %d packets in buffer" % len(packets))
             self.last_packet_rx = self.last_data_rx
+            self.received_packets += packets
 
-        # also make sure to trim the buffer to the end of the last received packet,
-        # or if it exceeds a max size trim it as well,
-        # making sure to leave at least a packet's worth of characters
-        # in case one is currently coming in
-        trimmed = ""
-        packet_remove_index = lastindex + self.PACKET_STR_LEN
-        trimmed += self.rx_buf[:packet_remove_index]
-        self.rx_buf = self.rx_buf[packet_remove_index:]
+            # if we got packets,
+            # make sure to trim the buffer to the end of the last received packet,
+            # so we don't read them again
+            lastindex = indexes[len(indexes) - 1]
+            packet_remove_index = lastindex + self.PACKET_STR_LEN
+            trimmed += self.rx_buf[:packet_remove_index]
+            self.rx_buf = self.rx_buf[packet_remove_index:]
+
+        # regardless of whether we got a packet, if the buffer exceeds a max size trim it as well,
+        # making sure to leave at least a packet's worth of characters in case one is currently coming in
         self.rx_buf, trimmed2 = EQUiStation.trim_buffer(self.rx_buf, self.MAX_BUF_SIZE, self.PACKET_STR_LEN)
         trimmed += trimmed2
 
@@ -301,20 +320,13 @@ class EQUiStation:
         with open(self.RXDATA_LOGFILE, "a") as f:
             f.write(trimmed)
 
-        return got_packet
+        return len(packets) > 0
 
-    def scan_for_packets_helper(self):
-        """ Scans for raw HEX packets in the recieve buffer and sends any found
-            to a server. Also trims the buffer before the end of the last packet.
-            Returns whether any packets were found.
-        """
-        packets, indexes = EQUiStation.extract_packets(self.rx_buf)
-        if len(packets) == 0:
-            return False, 0
-
+    def publish_received_packets(self):
+        """ Publishes all packets received that haven't been sent """
         # error correct and send packets to API
-        for raw in packets:
-            logging.info("FOUND PACKET, correcting & sending...")
+        for raw in self.received_packets:
+            logging.info("GOT PACKET: correcting & sending...")
             corrected, error = EQUiStation.correct_packet_errors(raw)
             errors_corrected = error is None
 
@@ -325,19 +337,22 @@ class EQUiStation:
                 if err is not None:
                     logging.error("error parsing packet: %s" % err)
 
-            # post packet to API
-            logging.info("""publishing packet:
-raw:
-%s
-corrected: (len: %d, actually corrected: %r, error: %s):
-%s
-parsed:
-%s""" % (raw, len(corrected), errors_corrected, error, corrected, parsed))
-            self.publish_packet(raw, corrected, parsed, errors_corrected)
+            # post packet to API (no matter what)
+            packet_info_msg = "\nraw:\n%s\n\n corrected (len: %d, actually corrected: %r, error: %s):\n%s\n\nparsed:\n%s\n\n" % \
+                         (raw, len(corrected), errors_corrected, error, corrected, parsed)
+            logging.info("publishing packet: %s" % packet_info_msg)
+            if SEND_PACKETS:
+                self.publish_packet(raw, corrected, parsed, errors_corrected)
 
-        # send last index for trimming everything before that (so we don't get these packets again)
-        lastindex = indexes[len(indexes) - 1]
-        return True, lastindex
+            # also send out email
+            if self.yag is not None:
+                logging.debug("sending email message with packet")
+                contents = "Information on packet: \n%s" % packet_info_msg
+                if SEND_PACKETS:
+                    self.yag.send(to=station.packet_email_recipients, subject="EQUiSat Station '%s' Received a Packet!" % station.station_name, contents=contents)
+
+        # reset packet list
+        self.received_packets = []
 
     def publish_packet(self, raw, corrected, parsed, errors_corrected, route=PACKET_PUB_ROUTE):
         """ Sends a POST request to the given API route to publish the packet. """
