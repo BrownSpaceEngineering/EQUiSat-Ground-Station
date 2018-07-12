@@ -23,17 +23,8 @@ import radio_control
 import station_config as station
 import config
 
-# testing config
-USE_TEST_FILE =             True
-GENERATE_FAKE_PASSES =      True    # see below for params
-RUN_TEST_UPLINKS =          True
-PUBLISH_PACKETS =           False
-
-TEST_INFILE = "../Test Dumps/test_packet_logfile.txt"
-TEST_OUTFILE = "groundstation_serial_out.txt"
-
 class EQUiStation:
-    DEFAULT_CONSOLE_LOGGING_LEVEL = logging.DEBUG
+    DEFAULT_CONSOLE_LOGGING_LEVEL = config.LOGGING_LEVEL
     LOG_FORMAT = '%(levelname)s [%(asctime)s]: %(message)s'
     LOGFILE = "groundstation.log"
     RXDATA_LOGFILE = "rx_data.log"
@@ -48,7 +39,7 @@ class EQUiStation:
     PERIODIC_PACKET_SCAN_FREQ_S = 2*60
 
     # doppler correction config
-    ORBITAL_PERIOD_S = 93*60 if not GENERATE_FAKE_PASSES else 240
+    ORBITAL_PERIOD_S = 93*60 if not config.GENERATE_FAKE_PASSES else 240
     RADIO_BASE_FREQ_HZ = int(435.55*10e6)
     RADIO_FREQ_STEP_HZ = radio_control.RADIO_FREQ_STEP_HZ
     RADIO_MAX_SETCHAN_RETRIES = 2
@@ -125,7 +116,7 @@ class EQUiStation:
 
         # set up transmitter for radio
         self.transmitter = transmit.Uplink(self.ser)
-        if RUN_TEST_UPLINKS:
+        if config.RUN_TEST_UPLINKS:
             self.send_tx_cmd('echo_cmd')
             self.send_tx_cmd('kill3_cmd')
             self.send_tx_cmd('kill7_cmd')
@@ -353,7 +344,7 @@ class EQUiStation:
                           (raw, len(corrected), errors_corrected, error, corrected, parsed)
         logging.info("publishing packet: %s" % packet_info_msg)
 
-        if PUBLISH_PACKETS:
+        if config.PUBLISH_PACKETS:
             json = {
                 "raw": raw,
                 "corrected": corrected,
@@ -371,10 +362,9 @@ class EQUiStation:
             if self.yag is not None:
                 logging.debug("sending email message with packet")
                 contents = "Information on packet: \n%s" % packet_info_msg
-                if PUBLISH_PACKETS:
-                    self.yag.send(to=station.packet_email_recipients,
-                                  subject="EQUiSat Station '%s' Received a Packet!" % station.station_name,
-                                  contents=contents)
+                self.yag.send(to=station.packet_email_recipients,
+                              subject="EQUiSat Station '%s' Received a Packet!" % station.station_name,
+                              contents=contents)
 
     @staticmethod
     def extract_packets(buf):
@@ -512,7 +502,7 @@ class EQUiStation:
         next_pass_data = self.tracker.get_next_pass()
 
         # TESTING override; generate fake pass instead
-        if GENERATE_FAKE_PASSES:
+        if config.GENERATE_FAKE_PASSES:
             rise_time = rand_dtime(datetime.datetime.now(), 10)
             set_time = rand_dtime(rise_time, 30)
             max_alt_time = rise_time + (set_time - rise_time)/2 # avg
@@ -631,8 +621,8 @@ def main():
         radio_preconfig = True
 
     gs = EQUiStation()
-    if USE_TEST_FILE:
-        gs.run(ser_infilename=TEST_INFILE, ser_outfilename=TEST_OUTFILE, radio_preconfig=radio_preconfig)
+    if config.USE_TEST_FILE:
+        gs.run(ser_infilename=config.TEST_INFILE, ser_outfilename=config.TEST_OUTFILE, radio_preconfig=radio_preconfig)
     else:
         gs.run(serial_port=config.SERIAL_PORT, serial_baud=config.SERIAL_BAUD, radio_preconfig=radio_preconfig)
 

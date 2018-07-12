@@ -1,4 +1,5 @@
 # Global config settings for groundstation
+import logging
 
 SERIAL_PORT = "/dev/ttyAMA0"
 SERIAL_BAUD = 38400
@@ -19,3 +20,14 @@ UPLINK_RESPONSES = {
 	"flashkill_cmd": "FLASHKILL",
 	"flashrevive_cmd": "FLASHREV!"
 }
+
+# testing config
+LOGGING_LEVEL = logging.DEBUG
+
+USE_TEST_FILE =             True
+GENERATE_FAKE_PASSES =      True
+RUN_TEST_UPLINKS =          True
+PUBLISH_PACKETS =           False
+
+TEST_INFILE = "../Test Dumps/test_packet_logfile.txt"
+TEST_OUTFILE = "groundstation_serial_out.txt"
