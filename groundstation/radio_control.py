@@ -135,46 +135,43 @@ def buildCommand(command_code, args=''):
     checksum = computeChecksum(payload)
     return START_OF_HEADER + payload + checksum + TERMINATOR
 
+def numToHex(num, max_bytes):
+    """ Converts num to hex, limiting to max_bytes """
+    return ('{:%sx}' % max_bytes).format(num).replace(" ", "0")[:max_bytes*2]
+
 def getSetFreqCommandBuf(freqInHZ, channelNum, isTX):
     #structure is [Start of Header, Command #, Channel #, Freq Byte #1, Freq Byte #2, Freq Byte #3, Freq Byte #4, checksum]
     #Byte #1 is MSB
-    freq_in_hex = '{:4x}'.format(freqInHZ).replace(" ", "0")[:8] # radio only supports 4 bytes
-    freq_bytes = bytearray.fromhex(freq_in_hex)
+    freq_bytes = bytearray.fromhex(numToHex(freqInHZ, 4)) # radio only supports 4 bytes
     command_type_byte = bytearray(b'\x37') if isTX else bytearray(b'\x39')
     channel_num_byte = bytearray(chr(channelNum))
     command_buf_payload = command_type_byte + channel_num_byte + freq_bytes
     checksum_byte = computeChecksum(command_buf_payload)
-    start_of_header = bytearray(b'\x01')
-    full_command_buf = start_of_header + command_buf_payload + checksum_byte + bytearray(b'\x00') #need to null terminate string
+    full_command_buf = START_OF_HEADER + command_buf_payload + checksum_byte + TERMINATOR
     return full_command_buf
 
 def setChannel(ser, channelNum, retries=DEFAULT_RETRIES, retry_delay_s=DEFAULT_RETRY_DELAY):
     """ Sets the radio's channel to channelNum. channelNum must be between 1 and 32 """
     if channelNum > 32 or channelNum < 0:
         print("Error: Channel must be between 1 and 32 (0x20)")
-    start_of_header = bytearray(b'\x01')
     command_type_byte = bytearray(b'\x03')
     channel_num_byte = bytearray(chr(channelNum))
     command_buf_payload = command_type_byte + channel_num_byte
     checksum_byte = computeChecksum(command_buf_payload)
-    full_command_buf = start_of_header + command_buf_payload + checksum_byte + bytearray(b'\x00') #need to null terminate string
+    full_command_buf = START_OF_HEADER + command_buf_payload + checksum_byte + TERMINATOR
     rets = sendConfigCommand(ser, full_command_buf, set_channel_response, retries=retries, retry_delay_s=retry_delay_s)
     return validateConfigResponse(b'\x00', rets)
 
 def addChannel(ser, channelNum, rxFreqInHz, txFreqInHz, bandwidthInHz=RADIO_DEFAULT_BANDWIDTH,
         retries=DEFAULT_RETRIES, retry_delay_s=DEFAULT_RETRY_DELAY):
-    start_of_header = bytearray(b'\x01')
     command_type_byte = bytearray(b'\x70\x00')
     channel_num_byte = bytearray(chr(channelNum))
-    rx_freq_in_hex = '{:4x}'.format(rxFreqInHz).replace(" ", "0")[:8] # radio only supports 4 bytes
-    rx_freq_bytes = bytearray.fromhex(rx_freq_in_hex)
-    tx_freq_in_hex = '{:4x}'.format(txFreqInHz).replace(" ", "0")[:8] # radio only supports 4 bytes
-    tx_freq_bytes = bytearray.fromhex(tx_freq_in_hex)
-    bandwidth_in_hex = '{:4x}'.format(bandwidthInHz).replace(" ", "0")[:8] # radio only supports 4 bytes
-    bandwidth_bytes = bytearray.fromhex(bandwidth_in_hex)
+    rx_freq_bytes = bytearray.fromhex(numToHex(rxFreqInHz, 4)) # radio only supports 4 bytes
+    tx_freq_bytes = bytearray.fromhex(numToHex(txFreqInHz, 4))  # radio only supports 4 bytes
+    bandwidth_bytes = bytearray.fromhex(numToHex(bandwidthInHz, 4)) # radio only supports 4 bytes
     command_buf_payload = command_type_byte + channel_num_byte + rx_freq_bytes + tx_freq_bytes + bandwidth_bytes
     checksum_byte = computeChecksum(command_buf_payload)
-    full_command_buf = start_of_header + command_buf_payload + checksum_byte + bytearray(b'\x00')  #need to null terminate string
+    full_command_buf = START_OF_HEADER + command_buf_payload + checksum_byte + TERMINATOR
     rets = sendConfigCommand(ser, full_command_buf, b'\xf0', retries=retries, retry_delay_s=retry_delay_s)
     return validateConfigResponse(b'\x00', rets) 
 
