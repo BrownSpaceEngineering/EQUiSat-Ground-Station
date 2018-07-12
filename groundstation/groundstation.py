@@ -24,12 +24,13 @@ import station_config as station
 import config
 
 # testing config
-USE_TEST_FILE = True
-GENERATE_FAKE_PASSES = True # see below for params
-RUN_TEST_UPLINKS = True
+USE_TEST_FILE =             True
+GENERATE_FAKE_PASSES =      True    # see below for params
+RUN_TEST_UPLINKS =          True
+PUBLISH_PACKETS =           False
+
 TEST_INFILE = "../Test Dumps/test_packet_logfile.txt"
 TEST_OUTFILE = "groundstation_serial_out.txt"
-SEND_PACKETS = True
 
 class EQUiStation:
     DEFAULT_CONSOLE_LOGGING_LEVEL = logging.INFO
@@ -80,6 +81,7 @@ class EQUiStation:
         self.next_pass_data = {}
 
         self.ser = None
+        self.transmitter = None # waiting on serial
         self.tracker = tracking.SatTracker(config.SAT_CATALOG_NUMBER)
 
         # setup email
@@ -104,7 +106,7 @@ class EQUiStation:
     # Groundstation state machine
     ##################################################################
     def run(self, serial_port=None, serial_baud=38400, radio_preconfig=False,
-        ser_infilename=None, ser_outfilename=None, file_read_size=PACKET_STR_LEN):
+        ser_infilename=None, ser_outfilename=None, file_read_size=PACKET_STR_LEN/4):
         try:
             if ser_infilename is not None and ser_outfilename is not None:
                 with mock_serial.MockSerial(infile_name=ser_infilename, outfile_name=ser_outfilename, max_inwaiting=file_read_size) as ser:
@@ -121,17 +123,18 @@ class EQUiStation:
         if radio_preconfig:
             self.radio_preconfig_pass_freqs()
 
+        # set up transmitter for radio
+        self.transmitter = transmit.Uplink(self.ser)
         if RUN_TEST_UPLINKS:
-            cmds = transmit.loadUplinkCommands(config.UPLINK_COMMANDS_FILE)
-            self.send_tx_cmd(cmds['echo_cmd'], config.UPLINK_RESPONSES['echo_cmd'])
-            self.send_tx_cmd(cmds['kill3_cmd'], config.UPLINK_RESPONSES['kill3_cmd'])
-            self.send_tx_cmd(cmds['kill7_cmd'], config.UPLINK_RESPONSES['kill7_cmd'])
-            self.send_tx_cmd(cmds['killf_cmd'], config.UPLINK_RESPONSES['killf_cmd'])
-            self.send_tx_cmd(cmds['flash_cmd'], config.UPLINK_RESPONSES['flash_cmd'])
-            self.send_tx_cmd(cmds['reboot_cmd'], config.UPLINK_RESPONSES['reboot_cmd'])
-            self.send_tx_cmd(cmds['revive_cmd'], config.UPLINK_RESPONSES['revive_cmd'])
-            self.send_tx_cmd(cmds['flashkill_cmd'], config.UPLINK_RESPONSES['flashkill_cmd'])
-            self.send_tx_cmd(cmds['flashrevive_cmd'], config.UPLINK_RESPONSES['flashrevive_cmd'])
+            self.send_tx_cmd('echo_cmd')
+            self.send_tx_cmd('kill3_cmd')
+            self.send_tx_cmd('kill7_cmd')
+            self.send_tx_cmd('killf_cmd')
+            self.send_tx_cmd('flash_cmd')
+            self.send_tx_cmd('reboot_cmd')
+            self.send_tx_cmd('revive_cmd')
+            self.send_tx_cmd('flashkill_cmd')
+            self.send_tx_cmd('flashrevive_cmd')
 
         # get radio ready for a pass
         self.update_radio_for_pass()
@@ -192,7 +195,7 @@ class EQUiStation:
             command = self.tx_cmd_queue.pop(0)
             logging.info("SENDING UPLINK COMMAND: %s" % command)
 
-            got_response, rx = transmit.sendUplink(command["cmd"], command["response"], self.ser)
+            got_response, rx = self.transmitter.send(command["cmd"])
             self.rx_buf += rx
 
             logging.info("uplink command success: %s" % got_response)
@@ -338,35 +341,40 @@ class EQUiStation:
                     logging.error("error parsing packet: %s" % err)
 
             # post packet to API (no matter what)
-            packet_info_msg = "\nraw:\n%s\n\n corrected (len: %d, actually corrected: %r, error: %s):\n%s\n\nparsed:\n%s\n\n" % \
-                         (raw, len(corrected), errors_corrected, error, corrected, parsed)
-            logging.info("publishing packet: %s" % packet_info_msg)
-            if SEND_PACKETS:
-                self.publish_packet(raw, corrected, parsed, errors_corrected)
+            self.publish_packet(raw, corrected, parsed, errors_corrected, error=error)
+
+        # reset packet list
+        self.received_packets = []
+
+    def publish_packet(self, raw, corrected, parsed, errors_corrected, error=None, route=PACKET_PUB_ROUTE):
+        """ Sends a POST request to the given API route to publish the packet. """
+
+        packet_info_msg = "\nraw:\n%s\n\n corrected (len: %d, actually corrected: %r, error: %s):\n%s\n\nparsed:\n%s\n\n" % \
+                          (raw, len(corrected), errors_corrected, error, corrected, parsed)
+        logging.info("publishing packet: %s" % packet_info_msg)
+
+        if PUBLISH_PACKETS:
+            json = {
+                "raw": raw,
+                "corrected": corrected,
+                "transmission": parsed,
+                "secret": station.station_secret,
+                "station_name": station.station_name,
+                "errors_corrected": errors_corrected
+            }
+
+            r = requests.post(route, json=json) # TODO: don't wanna spam
+            if r.status_code != requests.codes.ok:
+                logging.warning("couldn't publish packet (%d): %s" % (r.status_code, r.text))
 
             # also send out email
             if self.yag is not None:
                 logging.debug("sending email message with packet")
                 contents = "Information on packet: \n%s" % packet_info_msg
-                if SEND_PACKETS:
-                    self.yag.send(to=station.packet_email_recipients, subject="EQUiSat Station '%s' Received a Packet!" % station.station_name, contents=contents)
-
-        # reset packet list
-        self.received_packets = []
-
-    def publish_packet(self, raw, corrected, parsed, errors_corrected, route=PACKET_PUB_ROUTE):
-        """ Sends a POST request to the given API route to publish the packet. """
-        json = {
-            "raw": raw,
-            "corrected": corrected,
-            "transmission": parsed,
-            "secret": station.station_secret,
-            "station_name": station.station_name,
-            "errors_corrected": errors_corrected
-        }
-        # r = requests.post(route, json=json) # TODO: don't wanna spam
-        # if r.status_code != requests.codes.ok:
-        #     logging.warning("couldn't publish packet (%d): %s" % (r.status_code, r.text))
+                if PUBLISH_PACKETS:
+                    self.yag.send(to=station.packet_email_recipients,
+                                  subject="EQUiSat Station '%s' Received a Packet!" % station.station_name,
+                                  contents=contents)
 
     @staticmethod
     def extract_packets(buf):
@@ -450,9 +458,10 @@ class EQUiStation:
             mid_channels_okay = in_okay and out_okay
             self.rx_buf += rx1 + rx2
 
-        # exit command mode
-        exit_okay, rx = radio_control.exitCommandMode(self.ser)
-        self.rx_buf += rx
+        # program settings and exit command mode
+        program_okay, rx1 = radio_control.program(self.ser)
+        exit_okay, rx2 = radio_control.exitCommandMode(self.ser)
+        self.rx_buf += rx1 + rx2
 
         okay = enter_okay and def_okay and mid_channels_okay and exit_okay
         logging.info("preconfigured radio channels: %s" % "success" if okay else "FAILURE")
@@ -519,6 +528,7 @@ class EQUiStation:
         if next_pass_data is None:
             logging.error("error retrieving next pass data")
             return False
+
         elif next_pass_data["max_alt_time"] is None or next_pass_data["max_alt"] is None:
             logging.warning("failed to update pass data: %s" % self.next_pass_data)
             return False
@@ -583,19 +593,19 @@ class EQUiStation:
     def get_tx_cmd_queue(self):
         return self.tx_cmd_queue
 
-    def send_tx_cmd(self, cmd, immediate=False):
-        """ Queues the given transmit command name and expected response to
+    def send_tx_cmd(self, cmd_name, immediate=False):
+        """ Queues the given transmit command (name) to
         be transmitted when best, or sets it to transmit immediately and
         continually if immediate is set.
         Returns whether the uplink cmd was valid. """
-        if not config.UPLINK_RESPONSES.has_key(cmd):
+        if not self.transmitter.is_valid(cmd_name):
             return False
-        response = config.UPLINK_RESPONSES[cmd]
 
-        self.tx_cmd_queue.append({"cmd": cmd, "response": response})
+        self.tx_cmd_queue.append({"cmd": cmd_name})
         if not self.only_send_tx_cmd and immediate:
             self.only_send_tx_cmd = True
-        logging.info("uplink command%s submitted: %s" % ("immediate" if immediate else "", cmd))
+
+        logging.info("uplink command%s queued: %s" % ("immediate" if immediate else "", cmd_name))
         return True
 
     def cancel_immediate_tx_cmd(self, remove=True):
@@ -603,8 +613,13 @@ class EQUiStation:
         if remove:
             self.tx_cmd_queue.pop(0) # immediate is always at end
 
-    def cancel_tx_cmd(self, cmd):
-        pass # TODO
+    def cancel_tx_cmd(self, cmd_name, all=True):
+        for existing in self.tx_cmd_queue:
+            if existing["cmd"] == cmd_name:
+                self.tx_cmd_queue.remove(existing)
+                # break on first
+                if not all:
+                    return
 
     # TODO: callbacks: on_freq_change, on_packet_rx, on_data_rx, etc.
 

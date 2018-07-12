@@ -25,7 +25,7 @@ class MockSerial:
         return random.randint(0, self.max_inwaiting)
 
     def write(self, data):
-        if self.outfile != None:
+        if self.outfile is not None:
             self.outfile.write(data)
 
     def read(self, size=-1):
@@ -33,13 +33,17 @@ class MockSerial:
             size = self.in_waiting
         self._rand_in_waiting()
 
-        if self.infile == None:
+        if self.infile is None:
             return chr(random.random.randint(255))*size
         else:
-            return self.infile.read(size)
+            # wrap around when can't read anymore
+            data = self.infile.read(size)
+            if len(data) < size:
+                self.infile.seek(0)
+            return data
 
     def close(self):
-        if self.outfile != None:
+        if self.outfile is not None:
             self.outfile.close()
-        if self.infile != None:
+        if self.infile is not None:
             self.infile.close()

@@ -11,7 +11,7 @@ from collections import OrderedDict
 import station_config as station
 
 DEFAULT_TLE_FNAME = "tle.txt"
-TLE_API_PREFIX = "https://www.celestrak.com/cgi-bin/TLE.pl?CATNR=%s"
+TLE_GET_ROUTE = "http://tracking.brownspace.org/api/tle" #"https://www.celestrak.com/cgi-bin/TLE.pl?CATNR=%s"
 
 class SatTracker:
     def __init__(self, norad_id, tle_fname=DEFAULT_TLE_FNAME):
@@ -97,7 +97,7 @@ class SatTracker:
 
     def update_tle(self):
         """ Update the TLE data from the remote Celestrack server. Returns if successful """
-        req = requests.get(TLE_API_PREFIX % self.norad_id)
+        req = requests.get(TLE_GET_ROUTE)
         if req.status_code != requests.codes.ok:
             return False
         tle_data = str(req.text.decode("utf8"))

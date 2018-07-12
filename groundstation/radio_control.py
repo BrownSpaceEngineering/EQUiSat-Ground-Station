@@ -25,9 +25,16 @@ get_rx_freq = bytearray(b'\x01\x3a\x01\xc4\x00')
 set_channel = bytearray(b'\x01\x03\x01\xfb\x00')
 set_bandwidth = bytearray(b'\x01\x70\x04\x01\x8a\x00')
 set_modulation = bytearray(b'\x01\x2b\x01\xd3')
-program = bytearray(b'\x01\x1e\xe1\x00')
+program_buf = bytearray(b'\x01\x1e\xe1\x00')
 warm_reset = bytearray(b'\x01\x1d\x01\xe1\x00')
 delete_channel = bytearray(b'\x01\x70\x01\x01\x8d\x00')
+
+set_channel_response = b'\x83'
+set_rx_freq_response = b'\xb9'
+set_tx_freq_response = b'\xb7'
+set_bandwidth_response = b'\xf0'
+set_modulation_response = b'\xab'
+program_response = b'\x9e'
 
 def enterCommandMode(ser, dealer=False, retries=DEFAULT_RETRIES, retry_delay_s=DEFAULT_RETRY_DELAY):
     """ Sets the radio to be in command mode, optimally with full dealer access
@@ -46,6 +53,11 @@ def enterCommandMode(ser, dealer=False, retries=DEFAULT_RETRIES, retry_delay_s=D
 def exitCommandMode(ser, retries=DEFAULT_RETRIES, retry_delay_s=DEFAULT_RETRY_DELAY):
     logging.debug("Setting radio to normal mode")
     res = sendConfigCommand(ser, warm_reset, b'\x9d', retries=retries, retry_delay_s=retry_delay_s)
+    return validateConfigResponse(b'\x00', res)
+
+def program(ser):
+    """ Persists the radio's current settings in nonvolatile memory """
+    res = sendConfigCommand(ser, program_buf, program_response)
     return validateConfigResponse(b'\x00', res)
 
 def sendConfigCommand(ser, buf, response_cmd, response_size=1, \
@@ -142,7 +154,7 @@ def setChannel(ser, channelNum, retries=DEFAULT_RETRIES, retry_delay_s=DEFAULT_R
     command_buf_payload = command_type_byte + channel_num_byte
     checksum_byte = computeChecksum(command_buf_payload)
     full_command_buf = start_of_header + command_buf_payload + checksum_byte + bytearray(b'\x00') #need to null terminate string
-    rets = sendConfigCommand(ser, full_command_buf, b'\x83', retries=retries, retry_delay_s=retry_delay_s)
+    rets = sendConfigCommand(ser, full_command_buf, set_channel_response, retries=retries, retry_delay_s=retry_delay_s)
     return validateConfigResponse(b'\x00', rets)
 
 def addChannel(ser, channelNum, rxFreqInHz, txFreqInHz, bandwidthInHz, \
@@ -167,7 +179,7 @@ def setRxFreq(ser, freqInHZ, channelNum, retries=DEFAULT_RETRIES, retry_delay_s=
     if freqInHZ % RADIO_FREQ_STEP_HZ != 0:
         return False, ""
     setRxCommandBuf = getSetFreqCommandBuf(freqInHZ, channelNum, False)
-    rets = sendConfigCommand(ser, setRxCommandBuf, b'\xb9', retries=retries, retry_delay_s=retry_delay_s)
+    rets = sendConfigCommand(ser, setRxCommandBuf, set_rx_freq_response, retries=retries, retry_delay_s=retry_delay_s)
     return validateConfigResponse(b'\x00', rets)
 
 def setTxFreq(ser, freqInHZ, channelNum, retries=DEFAULT_RETRIES, retry_delay_s=DEFAULT_RETRY_DELAY):
@@ -175,7 +187,7 @@ def setTxFreq(ser, freqInHZ, channelNum, retries=DEFAULT_RETRIES, retry_delay_s=
     if freqInHZ % RADIO_FREQ_STEP_HZ != 0:
         return False, ""
     setTxCommandBuf = getSetFreqCommandBuf(freqInHZ, channelNum, True)
-    rets = sendConfigCommand(ser, setTxCommandBuf, b'\xb7', retries=retries, retry_delay_s=retry_delay_s)
+    rets = sendConfigCommand(ser, setTxCommandBuf, set_tx_freq_response, retries=retries, retry_delay_s=retry_delay_s)
     return validateConfigResponse(b'\x00', rets)
 
 def setFreq(ser, freq, channel):
@@ -197,17 +209,17 @@ def getTxFreq(ser, channel):
 def configRadio(ser):
     enterCommandMode(ser, dealer=True)
     logging.info("Setting Channel")
-    channel_okay, _, _ = sendConfigCommand(ser, set_channel, b'\x83')
+    channel_okay, _, _ = sendConfigCommand(ser, set_channel, set_channel_response)
     logging.info("Setting rx freq")
-    rx_okay, _, _ = sendConfigCommand(ser, set_rx_freq, b'\xb9')
+    rx_okay, _, _ = sendConfigCommand(ser, set_rx_freq, set_rx_freq_response)
     logging.info("Setting tx freq")
-    tx_okay, _, _  = sendConfigCommand(ser, set_tx_freq, b'\xb7')
+    tx_okay, _, _  = sendConfigCommand(ser, set_tx_freq, set_tx_freq_response)
     logging.info("setting bandwidth")
-    bandwidth_okay, _, _ = sendConfigCommand(ser, set_bandwidth, b'\xf0')
+    bandwidth_okay, _, _ = sendConfigCommand(ser, set_bandwidth, set_bandwidth_response)
     logging.info("setting modulation")
-    modulation_okay, _, _ = sendConfigCommand(ser, set_modulation, b'\xab')
+    modulation_okay, _, _ = sendConfigCommand(ser, set_modulation, set_modulation_response)
     logging.info("programming")
-    program_okay, _, _ = sendConfigCommand(ser, program, b'\x9e')
+    program_okay, _, _ = sendConfigCommand(ser, program_buf, program_response)
     exit_okay, _ = exitCommandMode(ser)
     return channel_okay and rx_okay and tx_okay \
         and bandwidth_okay and modulation_okay and program_okay and exit_okay
