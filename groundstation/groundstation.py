@@ -40,7 +40,7 @@ class EQUiStation:
 
     # doppler correction config
     ORBITAL_PERIOD_S = 93*60 if not config.GENERATE_FAKE_PASSES else 240
-    RADIO_BASE_FREQ_HZ = int(435.55*10e6)
+    RADIO_BASE_FREQ_HZ = int(435.55*1e6)
     RADIO_FREQ_STEP_HZ = radio_control.RADIO_FREQ_STEP_HZ
     RADIO_MAX_SETCHAN_RETRIES = 2
     DOPPLER_MAX_ELEV_THRESH = 20 # deg
@@ -438,12 +438,14 @@ class EQUiStation:
         # set shifted channels
         mid_channels_okay = True
         channel = 2
-        for shift in (0, 3*self.RADIO_FREQ_STEP_HZ, self.RADIO_FREQ_STEP_HZ):
+        for i in range(1, 4):
+            shift = i * self.RADIO_FREQ_STEP_HZ
             # set inbound and outbound pair of channels
             freq_in = self.RADIO_BASE_FREQ_HZ + shift
             freq_out = self.RADIO_BASE_FREQ_HZ - shift
-            in_okay, rx1 = radio_control.addChannel(self.ser, channel, freq_in, freq_in) #radio_control.setFreq(self.ser, self.RADIO_BASE_FREQ_HZ + shift, channel)
-            out_okay, rx2 = radio_control.addChannel(self.ser, channel, freq_out, freq_out) #radio_control.setFreq(self.ser, self.RADIO_BASE_FREQ_HZ - shift, channel+1)
+            logging.info("setting channels %d -> %d to %f -> %f" % (channel, channel+1, freq_in/1e6, freq_out/1e6))
+            in_okay, rx1 = radio_control.addChannel(self.ser, channel, freq_in, freq_in) 
+            out_okay, rx2 = radio_control.addChannel(self.ser, channel+1, freq_out, freq_out) 
             # update
             channel += 2
             mid_channels_okay = mid_channels_okay and in_okay and out_okay

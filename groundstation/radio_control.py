@@ -137,7 +137,7 @@ def buildCommand(command_code, args=''):
 
 def numToHex(num, max_bytes):
     """ Converts num to hex, limiting to max_bytes """
-    return ('{:%sx}' % max_bytes).format(num).replace(" ", "0")[:max_bytes*2]
+    return ('{:%dx}' % (max_bytes*2)).format(num).replace(" ", "0")[:max_bytes*2]
 
 def getSetFreqCommandBuf(freqInHZ, channelNum, isTX):
     #structure is [Start of Header, Command #, Channel #, Freq Byte #1, Freq Byte #2, Freq Byte #3, Freq Byte #4, checksum]
