@@ -33,7 +33,7 @@ TEST_INFILE = "../Test Dumps/test_packet_logfile.txt"
 TEST_OUTFILE = "groundstation_serial_out.txt"
 
 class EQUiStation:
-    DEFAULT_CONSOLE_LOGGING_LEVEL = logging.INFO
+    DEFAULT_CONSOLE_LOGGING_LEVEL = logging.DEBUG
     LOG_FORMAT = '%(levelname)s [%(asctime)s]: %(message)s'
     LOGFILE = "groundstation.log"
     RXDATA_LOGFILE = "rx_data.log"
@@ -442,7 +442,7 @@ class EQUiStation:
         logging.info("preconfiguring radio channels...")
         # enter command mode and set default (no shift channel) - mainly for testing
         enter_okay, rx1 = radio_control.enterCommandMode(self.ser, dealer=True)
-        def_okay, rx2 = radio_control.setFreq(self.ser, self.RADIO_BASE_FREQ_HZ, 1)
+        def_okay, rx2 = radio_control.addChannel(self.ser, 1, self.RADIO_BASE_FREQ_HZ, self.RADIO_BASE_FREQ_HZ)
         self.rx_buf += rx1 + rx2
 
         # set shifted channels
@@ -450,12 +450,13 @@ class EQUiStation:
         channel = 2
         for shift in (0, 3*self.RADIO_FREQ_STEP_HZ, self.RADIO_FREQ_STEP_HZ):
             # set inbound and outbound pair of channels
-            in_okay, rx1 = radio_control.setFreq(self.ser, self.RADIO_BASE_FREQ_HZ + shift, channel)
-            channel += 1
-            out_okay, rx2 = radio_control.setFreq(self.ser, self.RADIO_BASE_FREQ_HZ - shift, channel)
+            freq_in = self.RADIO_BASE_FREQ_HZ + shift
+            freq_out = self.RADIO_BASE_FREQ_HZ - shift
+            in_okay, rx1 = radio_control.addChannel(self.ser, channel, freq_in, freq_in) #radio_control.setFreq(self.ser, self.RADIO_BASE_FREQ_HZ + shift, channel)
+            out_okay, rx2 = radio_control.addChannel(self.ser, channel, freq_out, freq_out) #radio_control.setFreq(self.ser, self.RADIO_BASE_FREQ_HZ - shift, channel+1)
             # update
-            channel += 1
-            mid_channels_okay = in_okay and out_okay
+            channel += 2
+            mid_channels_okay = mid_channels_okay and in_okay and out_okay
             self.rx_buf += rx1 + rx2
 
         # program settings and exit command mode

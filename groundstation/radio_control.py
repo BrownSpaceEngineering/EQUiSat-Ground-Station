@@ -12,6 +12,7 @@ import config
 DEFAULT_RETRIES = 5
 DEFAULT_RETRY_DELAY = 0.4
 RADIO_FREQ_STEP_HZ = 6250
+RADIO_DEFAULT_BANDWIDTH = 12500
 
 START_OF_HEADER = bytearray(b'\x01')
 TERMINATOR = bytearray(b'\x00')
@@ -44,7 +45,7 @@ def enterCommandMode(ser, dealer=False, retries=DEFAULT_RETRIES, retry_delay_s=D
     _, rx_buf1, _ = sendConfigCommand(ser, "+++", "", retries=0)
     time.sleep(0.1)
     if dealer:
-        okay, rx_buf2, response = sendConfigCommand(ser, set_dealer_mode_buf, b'\xc4', \
+        okay, rx_buf2, response = sendConfigCommand(ser, set_dealer_mode_buf, b'\xc4',
             retries=retries, retry_delay_s=retry_delay_s)
         return okay and response == bytearray(b'\x00'), rx_buf1 + rx_buf2
     else:
@@ -117,7 +118,10 @@ def checkCommandResponse(buf, response_cmd, response_size):
 def validateConfigResponse(expected, rets):
     """ Given the expected response and the three return values of sendConfigCommand, 
     returns whether the command was correct and the full rx buffer """
-    return rets[0] and rets[2][0] == expected, rets[1]
+    response_okay = rets[2][0] == expected
+    if not response_okay:
+        logging.error("unexpected response: %s; wanted %s" % (rets[2][0], expected))
+    return rets[0] and response_okay, rets[1]
 
 def computeChecksum(payload):
     """ Returns the checksum byte for the given payload
@@ -157,7 +161,7 @@ def setChannel(ser, channelNum, retries=DEFAULT_RETRIES, retry_delay_s=DEFAULT_R
     rets = sendConfigCommand(ser, full_command_buf, set_channel_response, retries=retries, retry_delay_s=retry_delay_s)
     return validateConfigResponse(b'\x00', rets)
 
-def addChannel(ser, channelNum, rxFreqInHz, txFreqInHz, bandwidthInHz, \
+def addChannel(ser, channelNum, rxFreqInHz, txFreqInHz, bandwidthInHz=RADIO_DEFAULT_BANDWIDTH,
         retries=DEFAULT_RETRIES, retry_delay_s=DEFAULT_RETRY_DELAY):
     start_of_header = bytearray(b'\x01')
     command_type_byte = bytearray(b'\x70\x00')
