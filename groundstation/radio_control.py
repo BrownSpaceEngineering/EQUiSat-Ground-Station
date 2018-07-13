@@ -227,6 +227,16 @@ def configRadio(ser):
     return channel_okay and rx_okay and tx_okay \
         and bandwidth_okay and modulation_okay and program_okay and exit_okay
 
+def freqSweepTest(ser):
+    for i in range(1, 8):
+        enterCommandMode(ser)
+        setChannel(ser, i)
+        program(ser)
+        exitCommandMode(ser)
+        time.sleep(1)
+        ser.write("equisat"*50)
+        time.sleep(1)
+
 if __name__ == "__main__":
     logging.basicConfig(level=logging.DEBUG)
     if len(sys.argv) == 2 and sys.argv[1] == "debug":
