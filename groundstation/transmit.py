@@ -139,7 +139,7 @@ def packet_test(ser):
         while True:
             print("sending packets")
             for i in range(4):
-                ser.write(PACKETS[i])
+                ser.write(binascii.unhexlify(PACKETS[i]))
                 time.sleep(0.75)
             time.sleep(20-0.75*4)
     except KeyboardInterrupt:
