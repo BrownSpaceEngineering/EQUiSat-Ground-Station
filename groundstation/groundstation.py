@@ -73,6 +73,8 @@ class EQUiStation:
         # just stored to be accessible to API, no actual use
         self.next_pass_data = {}
 
+        self._check_configs()
+
         # helpers
         self.ser = None
         self.transmitter = None # waiting on serial
@@ -100,6 +102,16 @@ class EQUiStation:
     def __del__(self):
         if hasattr(self, "rx_dump_file"):
             self.rx_dump_file.close()
+
+    @staticmethod
+    def _check_configs():
+        if not hasattr(station, "station_secret") or \
+            not hasattr(station, "station_name") or \
+            not hasattr(station, "station_lat") or \
+            not hasattr(station, "station_lon") or \
+            not hasattr(station, "station_alt") or \
+            not hasattr(station, "tx_disabled"):
+            raise ValueError("Invalid station config file")
 
     ##################################################################
     # Groundstation state machine
@@ -615,12 +627,16 @@ class EQUiStation:
             self.tx_cmd_queue.pop(0) # immediate is always at end
 
     def cancel_tx_cmd(self, cmd_name, all=True):
+        """ Cancels the given TX command by name, either the first found or all. Returns whether found and cancelled"""
+        found = False
         for existing in self.tx_cmd_queue:
             if existing["cmd"] == cmd_name:
+                found = True
                 self.tx_cmd_queue.remove(existing)
                 # break on first
                 if not all:
-                    return
+                    return True
+        return found
 
     # TODO: callbacks: on_freq_change, on_packet_rx, on_data_rx, etc.
 

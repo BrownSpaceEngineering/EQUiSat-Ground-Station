@@ -1,6 +1,5 @@
 #!/usr/bin/python
 # Terminal and CLI interface for the groundstation
-import sys
 import threading
 import argparse
 import cmd
@@ -50,7 +49,7 @@ class GroundstationCLI(cmd.Cmd):
         ))
 
         next_pass_info = None
-        if self.station.get_next_pass_data() != None:
+        if self.station.get_next_pass_data() is not None:
             next_pass_info = ""
             for key, value in self.station.get_next_pass_data().items():
                 next_pass_info += "\t%s: %s\n" % (key, value)
@@ -84,11 +83,22 @@ class GroundstationCLI(cmd.Cmd):
                 for cmd in config.UPLINK_RESPONSES.keys():
                     print(cmd)
 
-    def do_tx_cancel(self, line):
-        pass
+    def do_tx_rm(self, line):
+        """ Removes the given uplink command, either first found or all if specified """
+        args = line.split(" ")
+        if not (1 <= len(args) <= 2):
+            print("invalid arguments")
+        else:
+            cmd = args[0]
+            all = args[1] if len(args) == 2 else False
+            allSet = all == "all"
+            success = self.station.cancel_tx_cmd(cmd, all=allSet)
+            if not success:
+                print("command not in queue:")
+                print(self.station.get_tx_cmd_queue())
 
 def start_station(station, radio_preconfig, serial_port, serial_baud, ser_infilename, ser_outfilename):
-    if radio_preconfig == None:
+    if radio_preconfig is None:
         radio_preconfig = False
 
     def runner_serial():
@@ -97,12 +107,12 @@ def start_station(station, radio_preconfig, serial_port, serial_baud, ser_infile
         station.run(ser_infilename=ser_infilename, ser_outfilename=ser_outfilename, radio_preconfig=radio_preconfig)
 
     runner = None
-    if serial_baud != None and serial_baud != None:
+    if serial_baud is not None and serial_baud is not None:
         runner = runner_serial
-    elif ser_infilename != None and ser_outfilename != None:
+    elif ser_infilename is not None and ser_outfilename is not None:
         runner = runner_test
 
-    if runner != None:
+    if runner is not None:
         print("Starting EQUiStation...")
         thread = threading.Thread(target=runner)
         thread.daemon = True # close on app close
@@ -117,9 +127,9 @@ def config_parser():
     parser.add_argument('--radio_preconfig', metavar="pre", type=bool, default=False, help="whether to pre-configure radio frequencies")
     parser.add_argument('--serial_port', metavar="port", type=str, default=config.SERIAL_PORT, help="radio's serial port")
     parser.add_argument('--serial_baud', metavar="baud", type=int, default=config.SERIAL_BAUD, help="radio's serial baud rate")
-    parser.add_argument('--test', metavar="t", type=bool, default=groundstation.USE_TEST_FILE, help="whether to use serial spoofing")
-    parser.add_argument('--serial_infile', metavar="in", type=str, default=groundstation.TEST_INFILE, help="file to spoof serial input from")
-    parser.add_argument('--serial_outfile', metavar="out", type=str, default=groundstation.TEST_OUTFILE, help="file for redirecting serial output")
+    parser.add_argument('--test', metavar="t", type=bool, default=config.USE_TEST_FILE, help="whether to use serial spoofing")
+    parser.add_argument('--serial_infile', metavar="in", type=str, default=config.TEST_INFILE, help="file to spoof serial input from")
+    parser.add_argument('--serial_outfile', metavar="out", type=str, default=config.TEST_OUTFILE, help="file for redirecting serial output")
     return parser
 
 def main():
@@ -136,7 +146,7 @@ def main():
         args.serial_baud = None
 
     # start groundstation on new thread and command loop on this one
-    success = start_station(station, args.radio_preconfig, args.serial_port, args.serial_baud, \
+    success = start_station(station, args.radio_preconfig, args.serial_port, args.serial_baud,
         args.serial_infile, args.serial_outfile)
     if not success:
         print("Invalid CLI args")
