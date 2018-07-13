@@ -63,19 +63,18 @@ class SatTracker:
 
     # TLE handling adapted from https://github.com/tydlwav/GSW-Sat-Tracking work
     def load_tle(self):
-        try:
-            with open(self.tle_fname, 'r') as tle_file:
-                tles = tle_file.read()
-                self.tle = self.extract_tle(self.norad_id, tles)
-                if self.tle is None:
-                    msg = "tracking: TLEs could not be read"
-                    logging.error(msg)
-                    raise ValueError(msg)
+        for i in range(2):
+            try:
+                with open(self.tle_fname, 'r') as tle_file:
+                    tles = tle_file.read()
+                    self.tle = self.extract_tle(self.norad_id, tles)
+                    if self.tle is None:
+                        raise IOError("tracking file could not be parsed")
 
-        except IOError as e:
-            logging.warn("tracking: TLE file not found, attempting to re-download (err: %s)" % e)
-            # if the file's not found, we need to perform initial update
-            self.update_tle()
+            except IOError as e:
+                logging.warn("tracking: TLE file not found, attempting to re-download (err: %s)" % e)
+                # if the file's not found, we need to perform initial update
+                self.update_tle()
 
     @staticmethod
     def extract_tle(norad_id, tle_data):

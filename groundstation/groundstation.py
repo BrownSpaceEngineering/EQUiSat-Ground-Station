@@ -98,7 +98,8 @@ class EQUiStation:
         logging.getLogger().addHandler(self.console)
 
     def __del__(self):
-        self.rx_dump_file.close()
+        if hasattr(self, "rx_dump_file"):
+            self.rx_dump_file.close()
 
     ##################################################################
     # Groundstation state machine
@@ -543,7 +544,7 @@ class EQUiStation:
 
             logging.info("updated pass data with:\n%s\nchannels: %d -> %d\nfreqs: %f -> %f" % \
                 (self.next_pass_data, self.radio_inbound_channel, self.radio_outbound_channel,
-                    self.get_radio_inbound_freq_hz()/10.0e6, self.get_radio_outbound_freq_hz()/10.0e6))
+                    self.get_radio_inbound_freq_hz()/1.0e6, self.get_radio_outbound_freq_hz()/1.0e6))
             return True
 
     ##################################################################

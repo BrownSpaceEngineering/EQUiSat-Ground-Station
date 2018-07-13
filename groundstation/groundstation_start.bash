@@ -3,4 +3,4 @@
 # used in system service
 here=`dirname "${BASH_SOURCE[0]}"`
 cd $here
-sudo -u pi python groundstation.py
+sudo -u pi python groundstation.py $@
