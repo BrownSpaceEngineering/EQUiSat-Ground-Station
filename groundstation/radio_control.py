@@ -71,6 +71,7 @@ def sendConfigCommand(ser, buf, response_cmd, response_size=1, \
         logging.debug("sending radio command%s: %s" % \
             ("" if retry < 0 else " (try %d)"%(retry+1), binascii.hexlify(buf)))
         ser.write(buf)
+        ser.flush()
         oldtime = time.time()
         while (time.time() - oldtime) < 2:
             if ser.in_waiting > 0:
@@ -118,9 +119,10 @@ def checkCommandResponse(buf, response_cmd, response_size):
 def validateConfigResponse(expected, rets):
     """ Given the expected response and the three return values of sendConfigCommand, 
     returns whether the command was correct and the full rx buffer """
-    response_okay = rets[2][0] == expected
+    actual = rets[2][0] if len(rets[2]) > 0 else ""
+    response_okay = actual == expected
     if not response_okay:
-        logging.error("unexpected response: %s; wanted %s" % (rets[2][0], expected))
+        logging.error("unexpected response: got %s, wanted %s" % (actual, expected))
     return rets[0] and response_okay, rets[1]
 
 def computeChecksum(payload):

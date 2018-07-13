@@ -47,3 +47,9 @@ class MockSerial:
             self.outfile.close()
         if self.infile is not None:
             self.infile.close()
+
+    def flush(self):
+        if self.outfile is not None:
+            self.outfile.flush()
+        if self.infile is not None:
+            self.infile.flush()

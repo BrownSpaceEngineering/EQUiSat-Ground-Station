@@ -27,7 +27,8 @@ class EQUiStation:
     DEFAULT_CONSOLE_LOGGING_LEVEL = config.LOGGING_LEVEL
     LOG_FORMAT = '%(levelname)s [%(asctime)s]: %(message)s'
     LOGFILE = "groundstation.log"
-    RXDATA_LOGFILE = "rx_data.log"
+    RX_DUMP_FILENAME = "rx_data.log"
+    RX_DUMP_BUF_MAX_SIZE = 10 # small cause we might lose it!
 
     # RX config
     PACKET_PUB_ROUTE = "http://api.brownspace.org/equisat/receive_data"
@@ -52,6 +53,7 @@ class EQUiStation:
         self.last_data_rx = None
         self.last_packet_rx = None
         self.rx_buf = ""
+        self.rx_dump_buf = ""
         self.received_packets = []
         self.tx_cmd_queue = []
         self.only_send_tx_cmd = False
@@ -71,9 +73,11 @@ class EQUiStation:
         # just stored to be accessible to API, no actual use
         self.next_pass_data = {}
 
+        # helpers
         self.ser = None
         self.transmitter = None # waiting on serial
         self.tracker = tracking.SatTracker(config.SAT_CATALOG_NUMBER)
+        self.rx_dump_file = open(self.RX_DUMP_FILENAME, "a")
 
         # setup email
         if hasattr(station, "station_gmail_user") and hasattr(station, "station_gmail_pass") \
@@ -92,6 +96,9 @@ class EQUiStation:
         self.console.setLevel(self.DEFAULT_CONSOLE_LOGGING_LEVEL)
         self.console.setFormatter(logging.Formatter(self.LOG_FORMAT))
         logging.getLogger().addHandler(self.console)
+
+    def __del__(self):
+        self.rx_dump_file.close()
 
     ##################################################################
     # Groundstation state machine
@@ -168,7 +175,7 @@ class EQUiStation:
         inwaiting = self.ser.in_waiting
         if inwaiting > 0:
             in_data = self.ser.read(size=inwaiting)
-            self.rx_buf += hexlify(in_data)
+            self.update_rx_buf(hexlify(in_data))
             self.last_data_rx = datetime.datetime.now()
 
             # look for (and extract/send) any packets in the buffer, trimming
@@ -187,7 +194,7 @@ class EQUiStation:
             logging.info("SENDING UPLINK COMMAND: %s" % command)
 
             got_response, rx = self.transmitter.send(command["cmd"])
-            self.rx_buf += rx
+            self.update_rx_buf(rx)
 
             logging.info("uplink command success: %s" % got_response)
             logging.debug("full uplink response: %s" % rx)
@@ -280,6 +287,17 @@ class EQUiStation:
     ##################################################################
     # Receive/Decode Helpers
     ##################################################################
+    def update_rx_buf(self, new):
+        self.rx_buf += new
+        self.rx_dump_buf += new
+
+        # if dump buf gets big enough, write it to a file
+        # note we need to clear buf to make sure it doesn't get written twice
+        if len(self.rx_dump_buf) > self.RX_DUMP_BUF_MAX_SIZE:
+            self.rx_dump_file.write(self.rx_dump_buf)
+            self.rx_dump_file.flush()
+            self.rx_dump_buf = ""
+
     def scan_for_packets(self):
         """ Scans for packets in the RX buffer, as well as performs maintenance on the buffer.
         Should be run at some point whenever the buffer is updated. """
@@ -287,9 +305,6 @@ class EQUiStation:
 
         # look for any packets in the buffer (Only finds full packets)
         packets, indexes = EQUiStation.extract_packets(self.rx_buf)
-
-        # add all buffer trimmings to dump file
-        trimmed = ""
 
         # if we got a packet, update the last packet rx time to when we got data
         if len(packets) > 0:
@@ -301,19 +316,11 @@ class EQUiStation:
             # make sure to trim the buffer to the end of the last received packet,
             # so we don't read them again
             lastindex = indexes[len(indexes) - 1]
-            packet_remove_index = lastindex + self.PACKET_STR_LEN
-            trimmed += self.rx_buf[:packet_remove_index]
-            self.rx_buf = self.rx_buf[packet_remove_index:]
+            self.rx_buf = self.rx_buf[lastindex+self.PACKET_STR_LEN:]
 
         # regardless of whether we got a packet, if the buffer exceeds a max size trim it as well,
         # making sure to leave at least a packet's worth of characters in case one is currently coming in
-        self.rx_buf, trimmed2 = EQUiStation.trim_buffer(self.rx_buf, self.MAX_BUF_SIZE, self.PACKET_STR_LEN)
-        trimmed += trimmed2
-
-        # write trimmed to file (that way we can be sure all rx data will get written to the file)
-        with open(self.RXDATA_LOGFILE, "a") as f:
-            f.write(trimmed)
-
+        self.rx_buf, _ = EQUiStation.trim_buffer(self.rx_buf, self.MAX_BUF_SIZE, self.PACKET_STR_LEN)
         return len(packets) > 0
 
     def publish_received_packets(self):
@@ -414,7 +421,7 @@ class EQUiStation:
         channel_okay, rx2 = radio_control.setChannel(self.ser, self.radio_cur_channel, retries=self.RADIO_MAX_SETCHAN_RETRIES)
         exit_okay, rx3 = radio_control.exitCommandMode(self.ser, retries=self.RADIO_MAX_SETCHAN_RETRIES)
 
-        self.rx_buf += rx1 + rx2 + rx3
+        self.update_rx_buf(rx1 + rx2 + rx3)
         # don't scan for packets in RX buf because we're pressed for time
         return enter_okay and channel_okay and exit_okay
 
@@ -433,7 +440,7 @@ class EQUiStation:
         # enter command mode and set default (no shift channel) - mainly for testing
         enter_okay, rx1 = radio_control.enterCommandMode(self.ser, dealer=True)
         def_okay, rx2 = radio_control.addChannel(self.ser, 1, self.RADIO_BASE_FREQ_HZ, self.RADIO_BASE_FREQ_HZ)
-        self.rx_buf += rx1 + rx2
+        self.update_rx_buf(rx1 + rx2)
 
         # set shifted channels
         mid_channels_okay = True
@@ -449,12 +456,12 @@ class EQUiStation:
             # update
             channel += 2
             mid_channels_okay = mid_channels_okay and in_okay and out_okay
-            self.rx_buf += rx1 + rx2
+            self.update_rx_buf(rx1 + rx2)
 
         # program settings and exit command mode
         program_okay, rx1 = radio_control.program(self.ser)
         exit_okay, rx2 = radio_control.exitCommandMode(self.ser)
-        self.rx_buf += rx1 + rx2
+        self.update_rx_buf(rx1 + rx2)
 
         okay = enter_okay and def_okay and mid_channels_okay and exit_okay
         logging.info("preconfigured radio channels: %s" % "success" if okay else "FAILURE")

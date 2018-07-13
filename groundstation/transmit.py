@@ -51,6 +51,7 @@ class Uplink:
         while num_repeats < repeats:
             oldtime = time.time()
             ser.write(cmd)
+            ser.flush()
             while (time.time() - oldtime) < TX_RESPONSE_TIMEOUT_S:
                 logging.debug("searching for response...")
                 inwaiting = ser.in_waiting
