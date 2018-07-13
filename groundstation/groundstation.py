@@ -31,12 +31,11 @@ class EQUiStation:
     RX_DUMP_BUF_MAX_SIZE = 10 # small cause we might lose it!
 
     # RX config
-    PACKET_PUB_ROUTE = "http://api.brownspace.org/equisat/receive_data"
+    PACKET_PUB_ROUTE = "http://api.brownspace.org/equisat/receive"
     CALLSIGN_HEX = "574c39585a" # WL9XZE
     PACKET_STR_LEN = 2*255 # two hex char per byte
     MAX_BUF_SIZE = 4096
-    packet_regex = re.compile("(%s.{%d})" % \
-        (CALLSIGN_HEX, PACKET_STR_LEN-len(CALLSIGN_HEX)))
+    packet_regex = re.compile("(%s.{%d})" % (CALLSIGN_HEX, PACKET_STR_LEN-len(CALLSIGN_HEX)))
     PERIODIC_PACKET_SCAN_FREQ_S = 2*60
 
     # doppler correction config
@@ -68,7 +67,7 @@ class EQUiStation:
         self.radio_cur_channel = 1 # default no correction channel
         self.radio_inbound_channel = 1
         self.radio_outbound_channel = 1
-        self.ready_for_next_pass = False # allow it to be set if it's in the window on boot, in case of failure
+        self.ready_for_next_pass = True # we preconfig on first boot
 
         # just stored to be accessible to API, no actual use
         self.next_pass_data = {}
@@ -172,7 +171,7 @@ class EQUiStation:
 
                 # publish any packets we got (after trying uplink commands, etc.)
                 self.publish_received_packets()
-
+                
                 time.sleep(0.5)
 
             except KeyboardInterrupt:
@@ -293,6 +292,9 @@ class EQUiStation:
         # fine to correct now)
         correction = self.PACKET_SEND_FREQ_S / 2 - remainder
 
+        if correction != 0:
+            logging.debug("shifted doppler correct based on packet info, by %ds" % correction)
+
         # actually adjust time
         self.doppler_correct_time = self.doppler_correct_time + \
             datetime.timedelta(seconds=correction)
@@ -361,7 +363,7 @@ class EQUiStation:
         """ Sends a POST request to the given API route to publish the packet. """
 
         packet_info_msg = "\nraw:\n%s\n\n corrected (len: %d, actually corrected: %r, error: %s):\n%s\n\nparsed:\n%s\n\n" % \
-                          (raw, len(corrected), errors_corrected, error, corrected, parsed)
+                (raw, len(corrected), errors_corrected, error, corrected, parsed)
         logging.info("publishing packet: %s" % packet_info_msg)
 
         if config.PUBLISH_PACKETS:
@@ -532,7 +534,7 @@ class EQUiStation:
                 ('rise_time', rise_time),
                 ('rise_azimuth', random.randint(0, 360)*1.0),
                 ('max_alt_time', max_alt_time),
-                ('max_alt', random.randint(-90, 90)*1.0),
+                ('max_alt', random.randint(0, 20)*1.0),
                 ('set_time', set_time),
                 ('set_azimuth', random.randint(0, 360)*1.0)
             ])

@@ -24,10 +24,10 @@ UPLINK_RESPONSES = {
 # testing config
 LOGGING_LEVEL = logging.DEBUG
 
-USE_TEST_FILE =             True
+USE_TEST_FILE =             False
 GENERATE_FAKE_PASSES =      True
 RUN_TEST_UPLINKS =          True
-PUBLISH_PACKETS =           False
+PUBLISH_PACKETS =           True
 
 TEST_INFILE = "../Test Dumps/test_packet_logfile.txt"
 TEST_OUTFILE = "groundstation_serial_out.txt"
