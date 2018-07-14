@@ -25,8 +25,8 @@ UPLINK_RESPONSES = {
 LOGGING_LEVEL = logging.DEBUG
 
 USE_TEST_FILE =             False
-GENERATE_FAKE_PASSES =      True
-RUN_TEST_UPLINKS =          True
+GENERATE_FAKE_PASSES =      False
+RUN_TEST_UPLINKS =          False
 PUBLISH_PACKETS =           True
 
 TEST_INFILE = "../Test Dumps/test_packet_logfile.txt"

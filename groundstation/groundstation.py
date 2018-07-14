@@ -382,11 +382,15 @@ class EQUiStation:
 
             # also send out email
             if self.yag is not None:
-                logging.debug("sending email message with packet")
-                contents = "Information on packet: \n%s" % packet_info_msg
-                self.yag.send(to=station.packet_email_recipients,
-                              subject="EQUiSat Station '%s' Received a Packet!" % station.station_name,
-                              contents=contents)
+                try:
+                    logging.debug("sending email message with packet")
+                    contents = "Information on packet: \n%s" % packet_info_msg
+                    self.yag.send(to=station.packet_email_recipients,
+                                  subject="EQUiSat Station '%s' Received a Packet!" % station.station_name,
+                                  contents=contents)
+                except Exception as ex:
+                    logging.error("Error sending email: %s" % ex)
+
 
     @staticmethod
     def extract_packets(buf):
