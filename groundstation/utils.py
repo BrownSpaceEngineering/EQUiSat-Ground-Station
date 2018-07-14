@@ -12,11 +12,11 @@ def dtime_within(dtime1, dtime2, window_s):
 def dtime_after(maybe_after, before=None):
     """ Returns whether the datetime "before" is after "maybe_after"
         "before" defaults to now """
-    if before == None:
-        before = datetime.datetime.now()
+    if before is None:
+        before = datetime.datetime.utcnow()
     return (maybe_after - before).total_seconds() > 0
 
 def rand_dtime(start, max_duration_s):
     """ Returns a random datetime past start up to start + max_duration_s """
     actual_duration_s = random.randint(0, max_duration_s)
-    return start + datetime.timedelta(seconds=max_duration_s)
+    return start + datetime.timedelta(seconds=actual_duration_s)

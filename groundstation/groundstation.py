@@ -61,9 +61,9 @@ class EQUiStation:
         self.station_lat = station.station_lat
         self.station_lon = station.station_lon
         self.station_alt = station.station_alt
-        self.doppler_correct_time = datetime.datetime.now()
-        self.update_pass_data_time = datetime.datetime.now()
-        self.next_packet_scan = datetime.datetime.now()
+        self.doppler_correct_time = datetime.datetime.utcnow()
+        self.update_pass_data_time = datetime.datetime.utcnow()
+        self.next_packet_scan = datetime.datetime.utcnow()
         self.radio_cur_channel = 1 # default no correction channel
         self.radio_inbound_channel = 1
         self.radio_outbound_channel = 1
@@ -164,9 +164,9 @@ class EQUiStation:
                 self.correct_for_doppler()
 
                 # periodically perform random scans for packets in case we missed something
-                if self.next_packet_scan <= datetime.datetime.now():
+                if self.next_packet_scan <= datetime.datetime.utcnow():
                     self.scan_for_packets()
-                    self.next_packet_scan = datetime.datetime.now() + \
+                    self.next_packet_scan = datetime.datetime.utcnow() + \
                         datetime.timedelta(seconds=self.PERIODIC_PACKET_SCAN_FREQ_S)
 
                 # publish any packets we got (after trying uplink commands, etc.)
@@ -188,7 +188,7 @@ class EQUiStation:
         if inwaiting > 0:
             in_data = self.ser.read(size=inwaiting)
             self.update_rx_buf(hexlify(in_data))
-            self.last_data_rx = datetime.datetime.now()
+            self.last_data_rx = datetime.datetime.utcnow()
 
             # look for (and extract/send) any packets in the buffer, trimming
             # the buffer after finding any. (Only finds full packets)
@@ -233,7 +233,7 @@ class EQUiStation:
         if self.ready_for_next_pass:
             self.interlace_doppler_and_tx_times()
 
-        now = datetime.datetime.now()
+        now = datetime.datetime.utcnow()
         # if the satellite is far past (on opposite side of planet),
         # update our data on the next pass and the actual radio frequency
         # settings to be ready for the next pass
@@ -243,12 +243,12 @@ class EQUiStation:
                 self.ready_for_next_pass = True
                 # (NOTE: doppler_correct_time updated in above function)
                 # schedule the next update (tentatively) for an orbital period away
-                self.update_pass_data_time = datetime.datetime.now() + \
+                self.update_pass_data_time = datetime.datetime.utcnow() + \
                     datetime.timedelta(seconds=EQUiStation.ORBITAL_PERIOD_S)
                 return True
             else:
                 # keep trying again on any failure, but delay it a bit
-                self.update_pass_data_time = datetime.datetime.now() + \
+                self.update_pass_data_time = datetime.datetime.utcnow() + \
                     datetime.timedelta(seconds=EQUiStation.DOPPLER_FAIL_RETRY_DELAY_S)
                 return False
 
@@ -262,7 +262,7 @@ class EQUiStation:
                 self.ready_for_next_pass = False
                 # (NOTE: leave doppler_correct_time as it was, just for historical purposes)
                 # change the update time to halfway around the orbit from here
-                self.update_pass_data_time = datetime.datetime.now() + \
+                self.update_pass_data_time = datetime.datetime.utcnow() + \
                     datetime.timedelta(seconds=EQUiStation.ORBITAL_PERIOD_S/2)
 
             logging.info("ADJUSTED FOR DOPPLER: %s" % "success" if good else "FAILURE")
@@ -531,7 +531,7 @@ class EQUiStation:
 
         # TESTING override; generate fake pass instead
         if config.GENERATE_FAKE_PASSES:
-            rise_time = rand_dtime(datetime.datetime.now(), 10)
+            rise_time = rand_dtime(datetime.datetime.utcnow(), 10)
             set_time = rand_dtime(rise_time, 30)
             max_alt_time = rise_time + (set_time - rise_time)/2 # avg
             next_pass_data = OrderedDict([
