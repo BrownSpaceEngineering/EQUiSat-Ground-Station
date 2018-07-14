@@ -206,7 +206,7 @@ class EQUiStation:
             logging.info("SENDING UPLINK COMMAND: %s" % command)
 
             got_response, rx = self.transmitter.send(command["cmd"])
-            self.update_rx_buf(rx)
+            self.update_rx_buf(hexlify(rx))
 
             logging.info("uplink command success: %s" % got_response)
             logging.debug("full uplink response: %s" % rx)
@@ -391,7 +391,6 @@ class EQUiStation:
                 except Exception as ex:
                     logging.error("Error sending email: %s" % ex)
 
-
     @staticmethod
     def extract_packets(buf):
         """ Attempts to find and extract full packets from the given buffer based on callsign matching.
@@ -440,7 +439,7 @@ class EQUiStation:
         channel_okay, rx2 = radio_control.setChannel(self.ser, self.radio_cur_channel, retries=self.RADIO_MAX_SETCHAN_RETRIES)
         exit_okay, rx3 = radio_control.exitCommandMode(self.ser, retries=self.RADIO_MAX_SETCHAN_RETRIES)
 
-        self.update_rx_buf(rx1 + rx2 + rx3)
+        self.update_rx_buf(hexlify(rx1 + rx2 + rx3))
         # don't scan for packets in RX buf because we're pressed for time
         return enter_okay and channel_okay and exit_okay
 
@@ -459,7 +458,7 @@ class EQUiStation:
         # enter command mode and set default (no shift channel) - mainly for testing
         enter_okay, rx1 = radio_control.enterCommandMode(self.ser, dealer=True)
         def_okay, rx2 = radio_control.addChannel(self.ser, 1, self.RADIO_BASE_FREQ_HZ, self.RADIO_BASE_FREQ_HZ)
-        self.update_rx_buf(rx1 + rx2)
+        self.update_rx_buf(hexlify(rx1 + rx2))
 
         # set shifted channels
         mid_channels_okay = True
@@ -475,12 +474,12 @@ class EQUiStation:
             # update
             channel += 2
             mid_channels_okay = mid_channels_okay and in_okay and out_okay
-            self.update_rx_buf(rx1 + rx2)
+            self.update_rx_buf(hexlify(rx1 + rx2))
 
         # program settings and exit command mode
         program_okay, rx1 = radio_control.program(self.ser)
         exit_okay, rx2 = radio_control.exitCommandMode(self.ser)
-        self.update_rx_buf(rx1 + rx2)
+        self.update_rx_buf(hexlify(rx1 + rx2))
 
         okay = enter_okay and def_okay and mid_channels_okay and exit_okay
         logging.info("preconfigured radio channels: %s" % "success" if okay else "FAILURE")

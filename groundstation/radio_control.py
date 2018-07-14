@@ -61,7 +61,7 @@ def program(ser):
     res = sendConfigCommand(ser, program_buf, program_response)
     return validateConfigResponse(b'\x00', res)
 
-def sendConfigCommand(ser, buf, response_cmd, response_size=1, \
+def sendConfigCommand(ser, buf, response_cmd, response_size=1,
         retries=DEFAULT_RETRIES, retry_delay_s=DEFAULT_RETRY_DELAY):
     """ Sends the given config command to the radio over the given serial line.
     Returns whether a valid response was recieved, all data recieved over RX, and the response args """
