@@ -2,9 +2,9 @@
 # Script to extract hex packets from a log file dumped by EQUiSatOS in with the PRINT_HEX_TRANSMISSIONS flag defined.
 import sys
 import csv
-import re
 from groundstation import groundstation
 from groundstation.packetparse import packetparse
+import json
 
 WRITE_PARSED = True
 CSV_HEADERS = ["packet", "valid (only hex chars)", "parsed timestamp", "parsed message type", "parsed sat state", "full parsed JSON"]
@@ -23,9 +23,9 @@ def check_line_for_packets(line, outwriter):
         # parse too if asked
         parsed = ""
         if WRITE_PARSED and valid:
-            parsed = packetparse.parse_packet(packet)
+            parsed, _ = packetparse.parse_packet(packet)
 
-        outwriter.writerow([packet, valid, preamble["timestamp"], preamble["message_type"], preamble["satellite_state"], parsed])
+        outwriter.writerow([packet, valid, preamble["timestamp"], preamble["message_type"], preamble["satellite_state"], json.dumps(parsed, indent=4)])
 
     return len(packets)
 
