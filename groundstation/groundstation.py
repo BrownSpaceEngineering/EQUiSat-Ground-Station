@@ -530,17 +530,7 @@ class EQUiStation:
 
         # TESTING override; generate fake pass instead
         if config.GENERATE_FAKE_PASSES:
-            rise_time = rand_dtime(datetime.datetime.utcnow(), 10)
-            set_time = rand_dtime(rise_time, 30)
-            max_alt_time = rise_time + (set_time - rise_time)/2 # avg
-            next_pass_data = OrderedDict([
-                ('rise_time', rise_time),
-                ('rise_azimuth', random.randint(0, 360)*1.0),
-                ('max_alt_time', max_alt_time),
-                ('max_alt', random.randint(0, 20)*1.0),
-                ('set_time', set_time),
-                ('set_azimuth', random.randint(0, 360)*1.0)
-            ])
+            next_pass_data = self.generate_fake_pass(25)
 
         # on fails, our best bet is probably to use the old pass as it won't change a ton
         if next_pass_data is None:
@@ -563,6 +553,20 @@ class EQUiStation:
                 (self.next_pass_data, self.radio_inbound_channel, self.radio_outbound_channel,
                     self.get_radio_inbound_freq_hz()/1.0e6, self.get_radio_outbound_freq_hz()/1.0e6))
             return True
+
+    @staticmethod
+    def generate_fake_pass(max_max_alt):
+        rise_time = rand_dtime(datetime.datetime.utcnow(), 10)
+        set_time = rand_dtime(rise_time, 30, 60)
+        max_alt_time = rise_time + (set_time - rise_time) / 2  # avg
+        return OrderedDict([
+            ('rise_time', rise_time),
+            ('rise_azimuth', random.randint(0, 360) * 1.0),
+            ('max_alt_time', max_alt_time),
+            ('max_alt', random.randint(0, max_max_alt) * 1.0),
+            ('set_time', set_time),
+            ('set_azimuth', random.randint(0, 360) * 1.0)
+        ])
 
     ##################################################################
     # External interface for control
