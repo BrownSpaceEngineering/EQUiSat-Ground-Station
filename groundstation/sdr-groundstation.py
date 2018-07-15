@@ -7,26 +7,26 @@ import subprocess
 import time
 
 from groundstation import config, tracking, EQUiStation
+import station_config as station
 import utils
 
 LOGFILE = "sdr-groundstation.log"
 PRE_PASS_ACTIVATE_S = 10
-USE_FAKE = True
+USE_FAKE = False
 
 LNA_GAIN = 10
 LINEARITY_GAIN = 5
 SAMPLE_RATE = 2.5*1e6
-AIRSPY_DUMP_DIREC = "./"
-AIRSPY_CMD_PREFIX = "airspy_rx -f 435.55 -l %d -g %d -a %s" % (LNA_GAIN, LINEARITY_GAIN, SAMPLE_RATE)
+AIRSPY_CMD_PREFIX = "/usr/local/bin/airspy_rx -f 435.55 -l %d -g %d -a %d" % (LNA_GAIN, LINEARITY_GAIN, SAMPLE_RATE)
 FILE_TIME_FORMAT = "%m.%d.%y_%H:%M"
 
 def get_airspy_cmd(filename):
-    return AIRSPY_CMD_PREFIX + " -r %s/%s" % (AIRSPY_DUMP_DIREC, filename)
+    return AIRSPY_CMD_PREFIX + " -r %s" % filename
 
 def generate_airspy_filename(pass_data, increment):
     start_date = pass_data["rise_time"].strftime(FILE_TIME_FORMAT)
     deg_pass = pass_data["max_alt"]
-    return "sdr_dump_%s_%d_deg%s.wav" % (start_date, deg_pass, increment if increment > 0 else "")
+    return "%s/sdr_dump_%s_%ddeg%s.wav" % (station.sdr_dump_dir, start_date, deg_pass, increment if increment > 0 else "")
 
 def get_next_pass(tracker):
     # update the TLE cache (every pass, we might as well)
@@ -52,7 +52,7 @@ def get_next_pass(tracker):
 def run_airspy(pass_data, file_i):
     cmd = get_airspy_cmd(generate_airspy_filename(pass_data, file_i))
     logging.debug("starting sdr dump cmd: %s" % cmd)
-    return subprocess.Popen(cmd)
+    return subprocess.Popen(cmd.split(" "))
 
 def on_pass(pass_data):
     file_i = 0
@@ -91,6 +91,9 @@ def main():
     console.setLevel(logging.DEBUG)
     console.setFormatter(logging.Formatter(EQUiStation.LOG_FORMAT))
     logging.getLogger().addHandler(console)
+
+    if not hasattr(station, "sdr_dump_dir"):
+        raise ValueError("invalid station config")
 
     while True:
         pass_data, success = get_next_pass(tracker)
