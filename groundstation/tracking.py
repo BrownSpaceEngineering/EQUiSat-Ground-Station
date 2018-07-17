@@ -20,7 +20,7 @@ class SatTracker:
         self.tle = None
         self.load_tle() # populates self.tle
 
-    def get_next_pass(self):
+    def get_next_pass(self, start=ephem.now()):
         """ Returns a dictionary with the rise and set time and azimuth as well as
         the max alt (transmit) time and elevation, or None if TLEs are not known """
         if self.tle is None:
@@ -31,6 +31,7 @@ class SatTracker:
             obs.lon = str(station.station_lon)
             obs.lat = str(station.station_lat)
             obs.elevation = station.station_alt
+            obs.date = start
             passData = obs.next_pass(self.tle)
             # next_pass returns a six-element tuple giving:
             # (dates are in UTC)
@@ -76,6 +77,36 @@ class SatTracker:
                 # if the file's not found, we need to perform initial update
                 self.update_tle()
 
+    def get_next_passes(self, num=10):
+        start = ephem.now()
+        passes = []
+        for p in range(num):
+            pass_data = self.get_next_pass(start)
+            if pass_data is not None:
+                passes.append(pass_data)
+                start = self.datetime_to_ephem(pass_data["set_time"] + datetime.timedelta(minutes=1))
+        return passes
+
+    @staticmethod
+    def pass_tostr(pass_data):
+        def date_to_string(dt):
+            return dt.strftime("%m/%d/%y %H:%M:%S UTC")
+        if pass_data is not None:
+            return "%s (%3d azim) -> %s (%2.0f deg) -> %s (%3d azim)" % (
+                    date_to_string(pass_data["rise_time"]),
+                    pass_data["rise_azimuth"],
+                    date_to_string(pass_data["max_alt_time"]),
+                    pass_data["max_alt"],
+                    date_to_string(pass_data["set_time"]),
+                    pass_data["set_azimuth"]
+                )
+        else:
+            return None
+
+    @staticmethod
+    def datetime_to_ephem(dt):
+        return ephem.Date((dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second))
+
     @staticmethod
     def extract_tle(norad_id, tle_data):
         """ Extracts the TLE set with the given string NORAD ID from the string list of TLEs,
@@ -88,7 +119,12 @@ class SatTracker:
             return None
 
         for i in range(0, len(tle_list)-2):
-            tle = ephem.readtle(tle_list[i], tle_list[i+1], tle_list[i+2])
+            try:
+                tle = ephem.readtle(tle_list[i], tle_list[i+1], tle_list[i+2])
+            except ValueError:
+                # watch for bad TLE line formats when we're in the middle of the line
+                continue
+
             if str(tle.catalog_number) == norad_id:
                 return tle
 
@@ -145,5 +181,9 @@ if __name__ == "__main__":
     import config
     st = SatTracker(config.SAT_CATALOG_NUMBER)
     st.update_tle()
-    print(st.get_next_pass())
-    print(st.pyephem_pass_test()) #"2018/7/4 6:00:00"))
+    print("next passes:")
+    passes = st.get_next_passes()
+    for pas in passes:
+        print(SatTracker.pass_tostr(pas))
+
+        #print(st.pyephem_pass_test()) #"2018/7/4 6:00:00"))

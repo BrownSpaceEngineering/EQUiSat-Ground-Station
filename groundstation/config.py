@@ -3,7 +3,7 @@ import logging
 
 SERIAL_PORT = "/dev/ttyAMA0"
 SERIAL_BAUD = 38400
-SAT_CATALOG_NUMBER = 25544 # NORAD (Space Command) number
+SAT_CATALOG_NUMBER = 43550 # ISS: 25544 # NORAD (Space Command) number
 
 UPLINK_COMMANDS_FILE = "uplink_commands.csv"
 

@@ -105,18 +105,18 @@ class EQUiStation:
     @staticmethod
     def _check_configs():
         if not hasattr(station, "station_secret") or \
-            not hasattr(station, "station_name") or \
-            not hasattr(station, "station_lat") or \
-            not hasattr(station, "station_lon") or \
-            not hasattr(station, "station_alt") or \
-            not hasattr(station, "tx_disabled"):
+                not hasattr(station, "station_name") or \
+                not hasattr(station, "station_lat") or \
+                not hasattr(station, "station_lon") or \
+                not hasattr(station, "station_alt") or \
+                not hasattr(station, "tx_disabled"):
             raise ValueError("Invalid station config file")
 
     ##################################################################
     # Groundstation state machine
     ##################################################################
     def run(self, serial_port=None, serial_baud=38400, radio_preconfig=False,
-        ser_infilename=None, ser_outfilename=None, file_read_size=PACKET_STR_LEN/4):
+            ser_infilename=None, ser_outfilename=None, file_read_size=PACKET_STR_LEN/4):
         try:
             if ser_infilename is not None and ser_outfilename is not None:
                 with mock_serial.MockSerial(infile_name=ser_infilename, outfile_name=ser_outfilename, max_inwaiting=file_read_size) as ser:
@@ -167,11 +167,11 @@ class EQUiStation:
                 if self.next_packet_scan <= datetime.datetime.utcnow():
                     self.scan_for_packets()
                     self.next_packet_scan = datetime.datetime.utcnow() + \
-                        datetime.timedelta(seconds=self.PERIODIC_PACKET_SCAN_FREQ_S)
+                                            datetime.timedelta(seconds=self.PERIODIC_PACKET_SCAN_FREQ_S)
 
                 # publish any packets we got (after trying uplink commands, etc.)
                 self.publish_received_packets()
-                
+
                 time.sleep(0.5)
 
             except KeyboardInterrupt:
@@ -244,12 +244,12 @@ class EQUiStation:
                 # (NOTE: doppler_correct_time updated in above function)
                 # schedule the next update (tentatively) for an orbital period away
                 self.update_pass_data_time = datetime.datetime.utcnow() + \
-                    datetime.timedelta(seconds=EQUiStation.ORBITAL_PERIOD_S)
+                                             datetime.timedelta(seconds=EQUiStation.ORBITAL_PERIOD_S)
                 return True
             else:
                 # keep trying again on any failure, but delay it a bit
                 self.update_pass_data_time = datetime.datetime.utcnow() + \
-                    datetime.timedelta(seconds=EQUiStation.DOPPLER_FAIL_RETRY_DELAY_S)
+                                             datetime.timedelta(seconds=EQUiStation.DOPPLER_FAIL_RETRY_DELAY_S)
                 return False
 
         # otherwise, if we've just passed the point of max elevation,
@@ -263,7 +263,7 @@ class EQUiStation:
                 # (NOTE: leave doppler_correct_time as it was, just for historical purposes)
                 # change the update time to halfway around the orbit from here
                 self.update_pass_data_time = datetime.datetime.utcnow() + \
-                    datetime.timedelta(seconds=EQUiStation.ORBITAL_PERIOD_S/2)
+                                             datetime.timedelta(seconds=EQUiStation.ORBITAL_PERIOD_S/2)
 
             logging.info("ADJUSTED FOR DOPPLER: %s" % "success" if good else "FAILURE")
             return good
@@ -295,9 +295,9 @@ class EQUiStation:
         if correction != 0:
             logging.debug("shifted doppler correct based on packet info, by %ds" % correction)
 
-        # actually adjust time
-        self.doppler_correct_time = self.doppler_correct_time + \
-            datetime.timedelta(seconds=correction)
+            # actually adjust time
+            self.doppler_correct_time = self.doppler_correct_time + \
+                                        datetime.timedelta(seconds=correction)
 
     ##################################################################
     # Receive/Decode Helpers
@@ -363,22 +363,26 @@ class EQUiStation:
         """ Sends a POST request to the given API route to publish the packet. """
 
         packet_info_msg = "\nraw:\n%s\n\n corrected (len: %d, actually corrected: %r, error: %s):\n%s\n\nparsed:\n%s\n\n" % \
-                (raw, len(corrected), errors_corrected, error, corrected, parsed)
+                          (raw, len(corrected), errors_corrected, error, corrected, parsed)
         logging.info("publishing packet: %s" % packet_info_msg)
 
-        if config.PUBLISH_PACKETS:
-            json = {
-                "raw": raw,
-                "corrected": corrected,
-                "transmission": parsed,
-                "secret": station.station_secret,
-                "station_name": station.station_name,
-                "errors_corrected": errors_corrected
-            }
+        json = {
+            "raw": raw,
+            "corrected": corrected,
+            "transmission": parsed,
+            "secret": station.station_secret,
+            "station_name": station.station_name,
+            "errors_corrected": errors_corrected
+        }
 
-            r = requests.post(route, json=json) # TODO: don't wanna spam
-            if r.status_code != requests.codes.ok:
-                logging.warning("couldn't publish packet (%d): %s" % (r.status_code, r.text))
+        if config.PUBLISH_PACKETS:
+            # publish packet to API
+            try:
+                r = requests.post(route, json=json)
+                if r.status_code != requests.codes.ok:
+                    logging.warning("couldn't publish packet (%d): %s" % (r.status_code, r.text))
+            except Exception as ex:
+                logging.error("Error publishing packet: %s" % ex)
 
             # also send out email
             if self.yag is not None:
@@ -469,8 +473,8 @@ class EQUiStation:
             freq_in = self.RADIO_BASE_FREQ_HZ + shift
             freq_out = self.RADIO_BASE_FREQ_HZ - shift
             logging.info("setting channels %d -> %d to %f -> %f" % (channel, channel+1, freq_in/1e6, freq_out/1e6))
-            in_okay, rx1 = radio_control.addChannel(self.ser, channel, freq_in, freq_in) 
-            out_okay, rx2 = radio_control.addChannel(self.ser, channel+1, freq_out, freq_out) 
+            in_okay, rx1 = radio_control.addChannel(self.ser, channel, freq_in, freq_in)
+            out_okay, rx2 = radio_control.addChannel(self.ser, channel+1, freq_out, freq_out)
             # update
             channel += 2
             mid_channels_okay = mid_channels_okay and in_okay and out_okay
@@ -514,7 +518,7 @@ class EQUiStation:
         good = data_good and activate_good
 
         logging.info("UPDATED FOR NEXT PASS: | pass data: %s | activating freqs: %s |" \
-            % (data_good, activate_good))
+                     % (data_good, activate_good))
         return good
 
     def update_pass_data(self):
@@ -549,9 +553,10 @@ class EQUiStation:
             # and note those frequencies
             self.update_optimal_pass_freqs(self.next_pass_data["max_alt"])
 
-            logging.info("updated pass data with:\n%s\nchannels: %d -> %d\nfreqs: %f -> %f" % \
-                (self.next_pass_data, self.radio_inbound_channel, self.radio_outbound_channel,
-                    self.get_radio_inbound_freq_hz()/1.0e6, self.get_radio_outbound_freq_hz()/1.0e6))
+            logging.info("TARGETED NEW PASS with:\n\n%s\nchannels: %d -> %d\nfreqs: %f -> %f (%.2fk)\n" % \
+                         (self.tracker.pass_tostr(self.next_pass_data), self.radio_inbound_channel, self.radio_outbound_channel,
+                          self.get_radio_inbound_freq_hz()/1.0e6, self.get_radio_outbound_freq_hz()/1.0e6,
+                          self.get_radio_doppler_correction()/1000.0))
             return True
 
     @staticmethod
