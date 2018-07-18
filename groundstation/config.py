@@ -3,7 +3,10 @@ import logging
 
 SERIAL_PORT = "/dev/ttyAMA0"
 SERIAL_BAUD = 38400
-SAT_CATALOG_NUMBER = 43551 # ISS: 25544 # NORAD (Space Command) number
+# Set this to None to use CATALOG number
+SINGLE_TLE_ROUTE = "http://tracking.brownspace.org/api/equisat_tle"
+# NORAD (Space Command) number; Make sure above is not None to use, or set to None
+SAT_CATALOG_NUMBER = 43551 # ISS: 25544
 
 UPLINK_COMMANDS_FILE = "uplink_commands.csv"
 
@@ -26,7 +29,7 @@ LOGGING_LEVEL = logging.DEBUG
 
 USE_TEST_FILE =             False
 GENERATE_FAKE_PASSES =      False
-RUN_TEST_UPLINKS =          False
+RUN_TEST_UPLINKS =         	False
 PUBLISH_PACKETS =           True
 UNHEXLIFY_TEST_FILE = 		False
 

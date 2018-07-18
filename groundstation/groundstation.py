@@ -77,7 +77,7 @@ class EQUiStation:
         # helpers
         self.ser = None
         self.transmitter = None # waiting on serial
-        self.tracker = tracking.SatTracker(config.SAT_CATALOG_NUMBER)
+        self.tracker = tracking.SatTracker(norad_id=config.SAT_CATALOG_NUMBER, single_tle_route=config.SINGLE_TLE_ROUTE)
         self.rx_dump_file = open(self.RX_DUMP_FILENAME, "a")
 
         # setup email
