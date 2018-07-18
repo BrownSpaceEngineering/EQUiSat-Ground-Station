@@ -119,7 +119,8 @@ class EQUiStation:
             ser_infilename=None, ser_outfilename=None, file_read_size=PACKET_STR_LEN/4):
         try:
             if ser_infilename is not None and ser_outfilename is not None:
-                with mock_serial.MockSerial(infile_name=ser_infilename, outfile_name=ser_outfilename, max_inwaiting=file_read_size) as ser:
+                with mock_serial.MockSerial(infile_name=ser_infilename, outfile_name=ser_outfilename,
+                                            max_inwaiting=file_read_size, unhex=config.UNHEXLIFY_TEST_FILE) as ser:
                     self.ser = ser
                     self.mainloop(radio_preconfig=radio_preconfig)
             else:

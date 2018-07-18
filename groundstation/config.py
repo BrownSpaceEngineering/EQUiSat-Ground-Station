@@ -28,6 +28,7 @@ USE_TEST_FILE =             False
 GENERATE_FAKE_PASSES =      False
 RUN_TEST_UPLINKS =          False
 PUBLISH_PACKETS =           True
+UNHEXLIFY_TEST_FILE = 		False
 
 TEST_INFILE = "../Test Dumps/test_packet_logfile.txt"
 TEST_OUTFILE = "groundstation_serial_out.txt"
