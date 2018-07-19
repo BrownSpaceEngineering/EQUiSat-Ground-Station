@@ -530,6 +530,11 @@ class EQUiStation:
         if not success:
             logging.error("error updating TLE data to latest")
 
+        if self.tracker.tle is not None:
+            logging.info("Using TLEs: %s; id %s" % (self.tracker.tle.name, self.tracker.tle.catalog_number))
+        else:
+            logging.warning("No TLE found!")
+
         # compute next pass geometrically
         next_pass_data = self.tracker.get_next_pass()
 
