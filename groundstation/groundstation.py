@@ -349,9 +349,12 @@ class EQUiStation:
             # parse if was corrected
             parsed = {}
             if errors_corrected:
-                parsed, err = packetparse.parse_packet(corrected)
-                if err is not None:
-                    logging.error("error parsing packet: %s" % err)
+                try:
+                    parsed, err = packetparse.parse_packet(corrected)
+                    if err is not None:
+                        logging.error("error parsing packet: %s" % err)
+                except ValueError or KeyError as e:
+                    logging.error("exception parsing packet: %s", e)
 
             # post packet to API (no matter what)
             self.publish_packet(raw, corrected, parsed, errors_corrected, error=error)
