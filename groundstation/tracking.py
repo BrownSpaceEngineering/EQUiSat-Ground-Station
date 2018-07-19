@@ -20,9 +20,10 @@ class SatTracker:
         self.tle = None
         self.load_tle() # populates self.tle
 
-    def get_next_pass(self, start=ephem.now()):
+    def get_next_pass(self, start=None):
         """ Returns a dictionary with the rise and set time and azimuth as well as
-        the max alt (transmit) time and elevation, or None if TLEs are not known """
+        the max alt (transmit) time and elevation, or None if TLEs are not known.
+        Optional start time parameter can be set to None to indicate now. """
         if self.tle is None:
             return None
 
@@ -31,7 +32,8 @@ class SatTracker:
             obs.lon = str(station.station_lon)
             obs.lat = str(station.station_lat)
             obs.elevation = station.station_alt
-            obs.date = start
+            if start is not None:
+                obs.date = start
             passData = obs.next_pass(self.tle)
             # next_pass returns a six-element tuple giving:
             # (dates are in UTC)
@@ -44,10 +46,10 @@ class SatTracker:
             # date info: http://rhodesmill.org/pyephem/date
             # next_pass info:
             # https://github.com/brandon-rhodes/pyephem/blob/592ecff661adb9c5cbed7437a23d705555d7ce57/libastro-3.7.7/riset_cir.c#L17
-            if passData == None:
+            if passData is None:
                 return None
             for data in passData:
-                if data == None:
+                if data is None:
                     return None
 
             return OrderedDict([
@@ -157,12 +159,13 @@ class SatTracker:
             logging.error("tracking: error writing TLE file: %s" % e)
             return False
 
-    def pyephem_pass_test(self, start_date=ephem.now(), num=10):
+    def pyephem_pass_test(self, start_date=None, num=10):
         """ Adapted from https://brainwagon.org/2009/09/27/how-to-use-python-to-predict-satellite-locations/ """
         obs = ephem.Observer()
         obs.lat = str(station.station_lat)
         obs.long = str(station.station_lon)
-        obs.date = start_date
+        if start_date is not None:
+            obs.date = start_date
 
         for p in range(num):
             pass_data = obs.next_pass(self.tle)
