@@ -134,9 +134,16 @@ class SatTracker:
 
     def update_tle(self):
         """ Update the TLE data from the remote Celestrack server. Returns if successful """
-        req = requests.get(TLE_GET_ROUTE)
-        if req.status_code != requests.codes.ok:
+        # watch for any connection failure
+        try:
+            req = requests.get(TLE_GET_ROUTE)
+            if req.status_code != requests.codes.ok:
+                logging.error("tracking: error code getting TLEs: %d" % req.status_code)
+                return False
+        except Exception as ex:
+            logging.error("tracking: exception getting TLEs: %s" % ex)
             return False
+
         tle_data = str(req.text.decode("utf8"))
 
         # clean text of HTML (unless it doesn't seem to be there)
