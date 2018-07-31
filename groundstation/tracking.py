@@ -183,7 +183,7 @@ class SatTracker:
 if __name__ == "__main__":
     import config
     st = SatTracker(config.SAT_CATALOG_NUMBER)
-    st.update_tle()
+    #st.update_tle()
     print("next passes:")
     passes = st.get_next_passes()
     for pas in passes:

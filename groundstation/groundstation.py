@@ -146,6 +146,9 @@ class EQUiStation:
             self.send_tx_cmd('flashkill_cmd')
             self.send_tx_cmd('flashrevive_cmd')
 
+        # HARD CODED COMMANDS
+        #self.send_tx_cmd('echo_cmd')
+
         # get radio ready for a pass
         self.update_radio_for_pass()
 
