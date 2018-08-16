@@ -9,6 +9,8 @@ import requests
 from collections import OrderedDict
 
 import station_config as station
+import groundstation
+import utils
 
 DEFAULT_TLE_FNAME = "tle.txt"
 TLE_GET_ROUTE = "http://tracking.brownspace.org/api/tle" #"https://www.celestrak.com/cgi-bin/TLE.pl?CATNR=%s"
@@ -91,15 +93,13 @@ class SatTracker:
 
     @staticmethod
     def pass_tostr(pass_data):
-        def date_to_string(dt):
-            return dt.strftime("%m/%d/%y %H:%M:%S UTC")
         if pass_data is not None:
             return "%s (%3d azim) -> %s (%2.0f deg) -> %s (%3d azim)" % (
-                    date_to_string(pass_data["rise_time"]),
+                    utils.date_to_str(pass_data["rise_time"]),
                     pass_data["rise_azimuth"],
-                    date_to_string(pass_data["max_alt_time"]),
+                    utils.date_to_str(pass_data["max_alt_time"]),
                     pass_data["max_alt"],
-                    date_to_string(pass_data["set_time"]),
+                    utils.date_to_str(pass_data["set_time"]),
                     pass_data["set_azimuth"]
                 )
         else:
@@ -195,5 +195,8 @@ if __name__ == "__main__":
     passes = st.get_next_passes()
     for pas in passes:
         print(SatTracker.pass_tostr(pas))
+        corrections = groundstation.EQUiStation.generate_doppler_corrections(
+            pas, groundstation.EQUiStation.DOPPLER_MAX_ELEV_THRESH)
+        print(groundstation.EQUiStation.doppler_corrections_tostr(corrections))
 
         #print(st.pyephem_pass_test()) #"2018/7/4 6:00:00"))

@@ -20,3 +20,7 @@ def rand_dtime(start, min_duration_s=0, max_duration_s=30):
     """ Returns a random datetime past start up to start + max_duration_s """
     actual_duration_s = random.randint(min_duration_s, max_duration_s)
     return start + datetime.timedelta(seconds=actual_duration_s)
+
+def date_to_str(dt):
+    """ Converts a UTC datetime to a concise string """
+    return dt.strftime("%m/%d/%y %H:%M:%S UTC")
