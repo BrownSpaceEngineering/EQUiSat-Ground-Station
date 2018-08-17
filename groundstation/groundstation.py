@@ -291,10 +291,10 @@ class EQUiStation:
                         # indicate we need to set up for next pass at some point
                         self.ready_for_pass = False
 
-                    # (NOTE: leave doppler_corrections as they were, just for historical purposes)
-                    # change the update time to halfway around the orbit from the start of this pass
-                    self.update_pass_data_time = self.doppler_corrections[0]["time"] + \
-                                                 datetime.timedelta(seconds=EQUiStation.ORBITAL_PERIOD_S/2)
+                        # (NOTE: leave doppler_corrections as they were, just for historical purposes)
+                        # change the update time to halfway around the orbit from the midpoint of this pass
+                        self.update_pass_data_time = self.next_pass_data["max_alt_time"] + \
+                                                     datetime.timedelta(seconds=EQUiStation.ORBITAL_PERIOD_S/2)
                 return good
 
         return False
@@ -434,7 +434,7 @@ class EQUiStation:
     @staticmethod
     def extract_packets(buf):
         """ Attempts to find and extract full packets from the given buffer based on callsign matching.
-            Also returns a parrallel list of starting indexes of the packets in the buffer. """
+            Also returns a parallel list of starting indexes of the packets in the buffer. """
         packets = EQUiStation.packet_regex.findall(buf)
         indexes = [buf.index(packet) for packet in packets]
         return packets, indexes
