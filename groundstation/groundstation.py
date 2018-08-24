@@ -44,7 +44,6 @@ class EQUiStation:
     RADIO_FREQ_STEP_HZ = radio_control.RADIO_FREQ_STEP_HZ
     RADIO_MAX_SETCHAN_RETRIES = 2
     RADIO_EMERGENCY_DOPPLER_CORRECT_HZ = 2*radio_control.RADIO_FREQ_STEP_HZ # assume we'll get good data on high passes
-    DOPPLER_MAX_ELEV_THRESH = 20 # deg
     DOPPLER_FAIL_RETRY_DELAY_S = 1.2*60 # time to delay before retrying doppler connect
     PACKET_SEND_FREQ_S = 20
 
@@ -266,18 +265,29 @@ class EQUiStation:
         # otherwise, if it's time for a new doppler correction, try and apply it
         # (note that ready_for_next_pass should imply that doppler_correction_index and doppler_corrections are all configured)
         elif self.ready_for_pass:
+            def move_on_to_next_pass():
+                # indicate we need to set up for next pass at some point
+                self.ready_for_pass = False
+
+                # (NOTE: leave doppler_corrections as they were, just for historical purposes)
+                # change the update time to halfway around the orbit from the midpoint of this pass
+                self.update_pass_data_time = self.next_pass_data["max_alt_time"] + \
+                                             datetime.timedelta(seconds=EQUiStation.ORBITAL_PERIOD_S / 2)
+
             # if the list is empty, something has gone wrong with getting pass data, and
             # a frequency has been configured, so just quit
             if len(self.doppler_corrections) == 0:
-                logging.error("NO doppler correction data, skipping correction")
-                self.ready_for_pass = False
+                logging.error("NO doppler correction data, finishing this pass")
+                move_on_to_next_pass()
                 return False
 
-            # if for some reason this happens, log an error but don't crash
+            # if for some reason this happens, log an error but don't crash (just wait for next pass)
             if self.doppler_correction_index >= len(self.doppler_corrections):
-                logging.error("doppler correction index (%d) overflowed doppler_corrections list, fixing: %s" %
+                logging.warn("doppler correction index (%d) larger than list, finishing this pass: %s" %
                               (self.doppler_correction_index, self.doppler_corrections))
-                self.doppler_correction_index = 0
+                self.doppler_correction_index = 0 # reset in case we come back to this
+                move_on_to_next_pass()
+                return False
 
             # check if it's time
             if now >= self.doppler_corrections[self.doppler_correction_index]["time"]:
@@ -288,13 +298,7 @@ class EQUiStation:
                     # move on to next doppler correction, or if we've completed the last one, wait for next pass
                     self.doppler_correction_index += 1
                     if self.doppler_correction_index >= len(self.doppler_corrections):
-                        # indicate we need to set up for next pass at some point
-                        self.ready_for_pass = False
-
-                        # (NOTE: leave doppler_corrections as they were, just for historical purposes)
-                        # change the update time to halfway around the orbit from the midpoint of this pass
-                        self.update_pass_data_time = self.next_pass_data["max_alt_time"] + \
-                                                     datetime.timedelta(seconds=EQUiStation.ORBITAL_PERIOD_S/2)
+                        move_on_to_next_pass()
                 return good
 
         return False
@@ -548,29 +552,49 @@ class EQUiStation:
     # Doppler correct helpers
     ##################################################################
     @staticmethod
-    def generate_doppler_corrections(pass_data, threshold_elev=20):
+    def generate_doppler_corrections(pass_data, tracker, base_freq_hz):
         """ Updates the list of doppler correction times and frequencies based on the
-        characteristics of the given next pass. """
-        now = datetime.datetime.utcnow()
-        max_elevation = pass_data["max_alt"]
-        rise_time = pass_data["rise_time"]
-        duration_s = (pass_data["set_time"] - pass_data["rise_time"]).total_seconds()
+        characteristics of the given next pass and the given tracker class. """
         freq_step = radio_control.RADIO_FREQ_STEP_HZ
+        # check what the times are during the pass that we hit the frequencies between
+        # our step points. Those are the times that we want to swap from one frequency setting
+        # to the next (lower) one, so we'll use those times as correction times
+        #                       +12.5k         +6.25k           0k            -6.25k         -12.5k
+        doppler_threshold_freqs = [1.5*freq_step, 0.5*freq_step, -0.5*freq_step, -1.5*freq_step]
+        doppler_threshold_times = tracker.get_doppler_freq_times(doppler_threshold_freqs, pass_data, base_freq_hz)
 
-        if max_elevation > threshold_elev:
-            return [
-                {"freq": 2*freq_step,   "time": rise_time}, # actually set right after this
-                {"freq": freq_step,     "time": rise_time + datetime.timedelta(seconds=0.27*duration_s)},
-                {"freq": 0,             "time": rise_time + datetime.timedelta(seconds=(0.27+0.20)*duration_s)},
-                {"freq": -freq_step,    "time": rise_time + datetime.timedelta(seconds=(0.27+0.20+0.07)*duration_s)},
-                {"freq": -2*freq_step,  "time": rise_time + datetime.timedelta(seconds=(0.27+0.20+0.07+0.20)*duration_s)},
-            ]
+        corrections = []
+        for freq in doppler_threshold_freqs:
+            # for all threshold times that are in the pass (the times are none if that frequency is never reached),
+            # add a correction to set the lower (i.e. next) frequency at that point
+            # for example, once we hit the 0.5*freq_step frequency, we want to transition to 0 doppler correction
+            # because we're now closer to 0 kHz shift than we are to freq_step kHz of shift.
+            if doppler_threshold_times[freq] is not None:
+                corrections.append({
+                    "time": doppler_threshold_times[freq],
+                    "freq": freq-0.5*freq_step,
+                })
+        if len(corrections) % 2 != 0:
+            logging.error("unusual doppler correction times returned (proceeding): %s", corrections)
+
+        # the times given only concern corrections during the pass
+        # (they assume the radio is already at the requisite frequency before each correction).
+        # So, we need to add the first correction that occurs before the pass.
+        # We list the time as the start of the pass for timing consistency, though it should be done earlier.
+        if len(corrections) == 0:
+            logging.warn("no doppler corrections suggested for pass, defaulting to zero correction")
+            first_correction_freq = 0
+        elif len(corrections) <= 2:
+            first_correction_freq = freq_step
         else:
-            return [
-                {"freq": freq_step,     "time": rise_time}, # actually set right after this
-                {"freq": 0,             "time": rise_time + datetime.timedelta(seconds=0.36*duration_s)},
-                {"freq": -freq_step,    "time": rise_time + datetime.timedelta(seconds=(0.36+0.27)*duration_s)},
-            ]
+            first_correction_freq = 2*freq_step
+
+        corrections.insert(0, {
+            "time": pass_data["rise_time"],
+            "freq": first_correction_freq
+        })
+
+        return corrections
 
     def update_radio_for_pass(self):
         data_good = self.update_pass_data()
@@ -596,6 +620,7 @@ class EQUiStation:
 
         # compute next pass geometrically
         next_pass_data = self.tracker.get_next_pass()
+        # next_pass_data = self.tracker.get_next_pass(start=self.tracker.datetime_to_ephem(datetime.datetime.utcnow()+datetime.timedelta(hours=7)))
 
         # TESTING override; generate fake pass instead
         if config.GENERATE_FAKE_PASSES:
@@ -617,28 +642,31 @@ class EQUiStation:
         else:
             self.next_pass_data = next_pass_data
             # generate the best set of doppler corrections for this pass and set them as the new ones
-            self.doppler_corrections = \
-                self.generate_doppler_corrections(self.next_pass_data, threshold_elev=self.DOPPLER_MAX_ELEV_THRESH)
+            self.doppler_corrections = self.generate_doppler_corrections(self.next_pass_data, self.tracker, self.RADIO_BASE_FREQ_HZ)
             self.doppler_correction_index = 0
             # make sure we active the first one ASAP (it will be activated right after this regardless)
             self.doppler_corrections[0]["time"] = datetime.datetime.utcnow()
 
             logging.info("TARGETED NEW PASS with:\n\n%s\ndoppler corrections:\n%s" % \
-                         (self.tracker.pass_tostr(self.next_pass_data), self.get_doppler_corrections_str()))
+                         (self.tracker.pass_tostr(self.next_pass_data, self.RADIO_BASE_FREQ_HZ), self.get_doppler_corrections_str()))
             return True
 
     @staticmethod
     def generate_fake_pass(max_max_alt):
         rise_time = rand_dtime(datetime.datetime.utcnow(), 10)
-        set_time = rand_dtime(rise_time, 30, 60)
+        set_time = rand_dtime(rise_time, 60, 120)
         max_alt_time = rise_time + (set_time - rise_time) / 2  # avg
+        max_alt = random.randint(0, max_max_alt) * 1.0
+        dop_fac = (max_alt / 90.0) * (15100.0 / EQUiStation.RADIO_BASE_FREQ_HZ)
         return OrderedDict([
             ('rise_time', rise_time),
             ('rise_azimuth', random.randint(0, 360) * 1.0),
+            ('rise_doppler_factor', dop_fac),
             ('max_alt_time', max_alt_time),
-            ('max_alt', random.randint(0, max_max_alt) * 1.0),
+            ('max_alt', max_alt),
             ('set_time', set_time),
-            ('set_azimuth', random.randint(0, 360) * 1.0)
+            ('set_azimuth', random.randint(0, 360) * 1.0),
+            ('set_doppler_factor', dop_fac)
         ])
 
     ##################################################################
