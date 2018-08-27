@@ -39,11 +39,11 @@ class EQUiStation:
     PERIODIC_PACKET_SCAN_FREQ_S = 2*60
 
     # doppler correction config
-    ORBITAL_PERIOD_S = 93*60 if not config.GENERATE_FAKE_PASSES else 240
+    ORBITAL_PERIOD_S = 93*60 if not config.GENERATE_FAKE_PASSES else 480
     RADIO_BASE_FREQ_HZ = int(435.55*1e6)
     RADIO_FREQ_STEP_HZ = radio_control.RADIO_FREQ_STEP_HZ
     RADIO_MAX_SETCHAN_RETRIES = 2
-    RADIO_EMERGENCY_DOPPLER_CORRECT_HZ = 2*radio_control.RADIO_FREQ_STEP_HZ # assume we'll get good data on high passes
+    RADIO_EMERGENCY_DOPPLER_CORRECT_HZ = 0 # assume we'll get good data at closest approach
     DOPPLER_FAIL_RETRY_DELAY_S = 1.2*60 # time to delay before retrying doppler connect
     PACKET_SEND_FREQ_S = 20
 
@@ -92,6 +92,8 @@ class EQUiStation:
             format=self.LOG_FORMAT,
             level=logging.DEBUG
         )
+        # print logs in UTC time
+        logging.Formatter.converter = time.gmtime
         self.console = logging.StreamHandler()
         self.console.setLevel(self.DEFAULT_CONSOLE_LOGGING_LEVEL)
         self.console.setFormatter(logging.Formatter(self.LOG_FORMAT))
@@ -268,11 +270,17 @@ class EQUiStation:
             def move_on_to_next_pass():
                 # indicate we need to set up for next pass at some point
                 self.ready_for_pass = False
-
                 # (NOTE: leave doppler_corrections as they were, just for historical purposes)
-                # change the update time to halfway around the orbit from the midpoint of this pass
-                self.update_pass_data_time = self.next_pass_data["max_alt_time"] + \
-                                             datetime.timedelta(seconds=EQUiStation.ORBITAL_PERIOD_S / 2)
+
+                # update pass time to be halfway around the orbit from this pass. Ideally
+                # the timing should be relative to the max alt time of this pass, but in case
+                # we have bad pass data that results in the update time being in the past
+                # (leading to an update loop), just set it to half an orbit from now
+                half_orbit_delta = datetime.timedelta(seconds=EQUiStation.ORBITAL_PERIOD_S / 2)
+                next_update_time = self.next_pass_data["max_alt_time"] + half_orbit_delta
+                if not dtime_after(next_update_time): # not after now
+                    next_update_time = datetime.datetime.utcnow() + half_orbit_delta
+                self.update_pass_data_time = next_update_time
 
             # if the list is empty, something has gone wrong with getting pass data, and
             # a frequency has been configured, so just quit
@@ -285,7 +293,6 @@ class EQUiStation:
             if self.doppler_correction_index >= len(self.doppler_corrections):
                 logging.warn("doppler correction index (%d) larger than list, finishing this pass: %s" %
                               (self.doppler_correction_index, self.doppler_corrections))
-                self.doppler_correction_index = 0 # reset in case we come back to this
                 move_on_to_next_pass()
                 return False
 
@@ -522,7 +529,6 @@ class EQUiStation:
         enter_okay, rx1 = radio_control.enterCommandMode(self.ser, dealer=True)
         def_okay, rx2 = radio_control.addChannel(self.ser, 1, self.RADIO_BASE_FREQ_HZ, self.RADIO_BASE_FREQ_HZ)
         self.update_rx_buf(hexlify(rx1 + rx2))
-
         # set shifted channels
         mid_channels_okay = True
         channel = 2
@@ -564,16 +570,18 @@ class EQUiStation:
         doppler_threshold_times = tracker.get_doppler_freq_times(doppler_threshold_freqs, pass_data, base_freq_hz)
 
         corrections = []
-        for freq in doppler_threshold_freqs:
-            # for all threshold times that are in the pass (the times are none if that frequency is never reached),
-            # add a correction to set the lower (i.e. next) frequency at that point
-            # for example, once we hit the 0.5*freq_step frequency, we want to transition to 0 doppler correction
-            # because we're now closer to 0 kHz shift than we are to freq_step kHz of shift.
-            if doppler_threshold_times[freq] is not None:
-                corrections.append({
-                    "time": doppler_threshold_times[freq],
-                    "freq": freq-0.5*freq_step,
-                })
+        # do default (single) correction if we get no times at all
+        if doppler_threshold_times is not None:
+            for freq in doppler_threshold_freqs:
+                # for all threshold times that are in the pass (the times are none if that frequency is never reached),
+                # add a correction to set the lower (i.e. next) frequency at that point
+                # for example, once we hit the 0.5*freq_step frequency, we want to transition to 0 doppler correction
+                # because we're now closer to 0 kHz shift than we are to freq_step kHz of shift.
+                if doppler_threshold_times[freq] is not None:
+                    corrections.append({
+                        "time": doppler_threshold_times[freq],
+                        "freq": freq-0.5*freq_step,
+                    })
         if len(corrections) % 2 != 0:
             logging.error("unusual doppler correction times returned (proceeding): %s", corrections)
 
@@ -622,11 +630,15 @@ class EQUiStation:
         next_pass_data = self.tracker.get_next_pass()
         # next_pass_data = self.tracker.get_next_pass(start=self.tracker.datetime_to_ephem(datetime.datetime.utcnow()+datetime.timedelta(hours=7)))
 
-        # TESTING override; generate fake pass instead
+        # TESTING override; determine a random elevation and select the closest elevation
+        # real pass from subsequent ones, then time shift it up (below)
+        # (wait until we compute doppler times to update all times at once, as we need real times for doppler)
         if config.GENERATE_FAKE_PASSES:
-            next_pass_data = self.generate_fake_pass(40)
+            desired_elev = random.randint(5, 90)
+            logging.debug("TESTING: finding pass with elevation near %d deg" % desired_elev)
+            next_pass_data = EQUiStation.find_pass_with_elev(desired_elev, self.tracker)
 
-        # on fails, our best bet is probably to use the old pass as it won't change a ton
+        # on fails, our best bet is probably to use the old pass as it won't change a ton (don't set self.next_pass_data)
         if next_pass_data is None:
             logging.error("ERROR retrieving next pass data")
             self.doppler_corrections = [] # there is no data
@@ -644,6 +656,12 @@ class EQUiStation:
             # generate the best set of doppler corrections for this pass and set them as the new ones
             self.doppler_corrections = self.generate_doppler_corrections(self.next_pass_data, self.tracker, self.RADIO_BASE_FREQ_HZ)
             self.doppler_correction_index = 0
+
+            # if we're 'faking' passes such that we make sure to run one right now, shift all the times in the
+            # pass up so it starts half an orbit from now (we're called half an orbit away)
+            if config.GENERATE_FAKE_PASSES:
+                self.shift_next_pass_to(duration_from_now=datetime.timedelta(seconds=15)) #duration_from_now=datetime.timedelta(seconds=EQUiStation.ORBITAL_PERIOD_S / 2))
+
             # make sure we active the first one ASAP (it will be activated right after this regardless)
             self.doppler_corrections[0]["time"] = datetime.datetime.utcnow()
 
@@ -652,9 +670,34 @@ class EQUiStation:
             return True
 
     @staticmethod
+    def find_pass_with_elev(desired_elev, tracker, num_to_search=30):
+        """ Selects the pass out of the upcoming real passes with the elevation closest to desired_elev"""
+        next_passes = tracker.get_next_passes(num=num_to_search)
+        best_next_pass = next_passes[0]
+        best_elev_diff = abs(best_next_pass["max_alt"] - desired_elev)
+        for pas in next_passes:
+            diff = abs(pas["max_alt"] - desired_elev)
+            if diff < best_elev_diff:
+                best_next_pass = pas
+                best_elev_diff = diff
+        return best_next_pass
+
+    def shift_next_pass_to(self, duration_from_now):
+        """ Shifts all the pass timing attributes for the next pass up to or back to duration_from_now from now """
+        to_subtract = self.next_pass_data["rise_time"] - (datetime.datetime.utcnow() + duration_from_now)
+        logging.debug("TESTING: shifting pass up by %s from\n%s" % (to_subtract,
+                   self.tracker.pass_tostr(self.next_pass_data, self.RADIO_BASE_FREQ_HZ)))
+        self.next_pass_data["rise_time"] -= to_subtract
+        self.next_pass_data["max_alt_time"] -= to_subtract
+        self.next_pass_data["set_time"] -= to_subtract
+        for dop_shift in self.doppler_corrections:
+            dop_shift["time"] -= to_subtract
+        logging.debug("TESTING: shifted pass:\n%s" % self.tracker.pass_tostr(self.next_pass_data, self.RADIO_BASE_FREQ_HZ))
+
+    @staticmethod
     def generate_fake_pass(max_max_alt):
         rise_time = rand_dtime(datetime.datetime.utcnow(), 10)
-        set_time = rand_dtime(rise_time, 60, 120)
+        set_time = rand_dtime(rise_time, 120, 240)
         max_alt_time = rise_time + (set_time - rise_time) / 2  # avg
         max_alt = random.randint(0, max_max_alt) * 1.0
         dop_fac = (max_alt / 90.0) * (15100.0 / EQUiStation.RADIO_BASE_FREQ_HZ)
@@ -748,7 +791,6 @@ class EQUiStation:
         return found
 
     # TODO: callbacks: on_freq_change, on_packet_rx, on_data_rx, etc.
-
 
 def main():
     radio_preconfig = False

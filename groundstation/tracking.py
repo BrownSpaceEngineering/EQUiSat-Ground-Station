@@ -23,10 +23,13 @@ class SatTracker:
         self.tle_fname = tle_fname
         self.tle = None
         self.load_tle() # populates self.tle
-        self.obs = ephem.Observer()
-        self.obs.lon = str(station.station_lon)
-        self.obs.lat = str(station.station_lat)
-        self.obs.elevation = station.station_alt
+
+    def get_observer(self):
+        obs = ephem.Observer()
+        obs.lon = str(station.station_lon)
+        obs.lat = str(station.station_lat)
+        obs.elevation = station.station_alt
+        return obs
 
     def get_next_pass(self, start=None):
         """ Returns a dictionary with the rise and set time and azimuth as well as
@@ -36,9 +39,13 @@ class SatTracker:
             return None
 
         try:
+            obs = self.get_observer()
             if start is not None:
-                self.obs.date = start
-            passData = self.obs.next_pass(self.tle)
+                obs.date = start
+            else:
+                obs.date = ephem.now()
+
+            passData = obs.next_pass(self.tle)
             # next_pass returns a six-element tuple giving:
             # (dates are in UTC)
             # 0  Rise time
@@ -200,22 +207,30 @@ class SatTracker:
         """ Returns a list of {'time', 'factor'} dicts giving the doppler factor at each time.
         Sorted in increasing time order.
          :param time_step_s: the time step to use to generate the list. """
+        obs = self.get_observer()
+        tle = self.tle.copy() # copy to not modify
         factors = []
         cur_time = pass_data["rise_time"]
         while utils.dtime_after(pass_data["set_time"], cur_time):
             factors.append({
                 "time": cur_time,
-                "factor": self.get_doppler_factor(cur_time)
+                "factor": self.get_doppler_factor(cur_time, obs=obs, tle=tle)
             })
             cur_time = cur_time + datetime.timedelta(seconds=time_step_s)
 
         return factors
 
-    def get_doppler_factor(self, dtime):
-        self.obs.date = self.datetime_to_ephem(dtime)
-        self.tle.compute(self.obs)
+    def get_doppler_factor(self, dtime, obs=None, tle=None):
+        # use provided objects if given, otherwise get new ones
+        if obs is None:
+            obs = self.get_observer()
+        if tle is None:
+            tle = self.tle.copy() # copy to not modify
+
+        obs.date = self.datetime_to_ephem(dtime)
+        tle.compute(obs)
         # negative because negative (inbound) range rate means an increase in frequency
-        return -self.tle.range_velocity / self.SPEED_OF_LIGHT_MPS
+        return -tle.range_velocity / self.SPEED_OF_LIGHT_MPS
 
     @staticmethod
     def pass_tostr(pass_data, sig_freq_hz=1000):
@@ -324,7 +339,7 @@ if __name__ == "__main__":
     st = SatTracker(config.SAT_CATALOG_NUMBER)
     #st.update_tle()
     print("next passes:")
-    passes = st.get_next_passes(num=20, start=datetime.datetime.utcnow()) # + datetime.timedelta(hours=1))
+    passes = st.get_next_passes(num=10, start=datetime.datetime.utcnow()) # + datetime.timedelta(hours=1))
     for pas in passes:
         print(SatTracker.pass_tostr(pas, groundstation.EQUiStation.RADIO_BASE_FREQ_HZ))
 
