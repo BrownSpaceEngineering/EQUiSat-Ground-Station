@@ -55,7 +55,6 @@ class EQUiStation:
         self.rx_dump_buf = ""
         self.received_packets = []
         self.tx_cmd_queue = []
-        self.only_send_tx_cmd = False
 
         # doppler shift/tracking
         self.station_lat = station.station_lat
@@ -67,6 +66,7 @@ class EQUiStation:
         self.next_packet_scan = datetime.datetime.utcnow()
         self.radio_cur_channel = 1 # default no correction channel
         self.ready_for_pass = True # we preconfig on first boot
+        self.last_uplink_time = datetime.datetime.fromordinal(1) # really old date so any uplink command will run immediately
 
         # just stored to be accessible to API, no actual use
         self.next_pass_data = {}
@@ -157,6 +157,7 @@ class EQUiStation:
 
         # HARD CODED COMMANDS
         #self.send_tx_cmd('echo_cmd')
+        #self.send_tx_cmd('echo_cmd', immediate=True)
 
         # get radio ready for a pass
         self.update_radio_for_pass()
@@ -168,15 +169,21 @@ class EQUiStation:
                 # try and receive data (a packet),
                 got_packet = self.receive()
 
-                # and if we did try and send any TX commands,
-                if got_packet or self.only_send_tx_cmd:
-                    self.transmit()
+                # if we got a packet try and send any TX commands,
+                send_tx = got_packet or self.sending_periodic_tx_cmd()
+                if send_tx:
+                    self.transmit(throttle=not got_packet)
+                    # look for (and extract/send) any packets in the buffer, trimming
+                    # the buffer after finding any. (Only finds full packets)
+                    # We do this here because we want to send TX commands ASAP after packet RX
+                    self.scan_for_packets()
 
                 # and then try to adjust the frequency for doppler effects
                 self.correct_for_doppler()
 
                 # periodically perform random scans for packets in case we missed something
-                if self.next_packet_scan <= datetime.datetime.utcnow():
+                # (only if we're not transmitting now as it would have been done)
+                if not send_tx and self.next_packet_scan <= datetime.datetime.utcnow():
                     self.scan_for_packets()
                     self.next_packet_scan = datetime.datetime.utcnow() + \
                                             datetime.timedelta(seconds=self.PERIODIC_PACKET_SCAN_FREQ_S)
@@ -184,7 +191,11 @@ class EQUiStation:
                 # publish any packets we got (after trying uplink commands, etc.)
                 self.publish_received_packets()
 
-                time.sleep(0.5)
+                # sleep to slow looping, but make it faster if we're sending TX commands so they can send faster
+                if self.sending_periodic_tx_cmd():
+                    time.sleep(0.1)
+                else:
+                    time.sleep(0.5)
 
             except KeyboardInterrupt:
                 break
@@ -201,38 +212,50 @@ class EQUiStation:
             in_data = self.ser.read(size=inwaiting)
             self.update_rx_buf(hexlify(in_data))
             self.last_data_rx = datetime.datetime.utcnow()
-
-            # look for (and extract/send) any packets in the buffer, trimming
-            # the buffer after finding any. (Only finds full packets)
-            # We do this here because all of the above may capture packets
-            return self.scan_for_packets()
+            logging.debug("received %d bytes of RX" % inwaiting)
+            return True
         return False
 
-    def transmit(self):
+    def transmit(self, throttle=True):
         """ Checks if there are any uplink commands on the queue and transmits
             them/waits for response if so.
             Returns whether anything was transmitted and whether it was successful. """
 
         if len(self.tx_cmd_queue) > 0:
-            command = self.tx_cmd_queue.pop(0)
-            logging.info("SENDING UPLINK COMMAND: %s" % command)
+            command = self.tx_cmd_queue[0]
 
-            got_response, rx = self.transmitter.send(command["cmd"])
-            self.update_rx_buf(hexlify(rx))
+            should_send = True
+            # regulate immediate uplink commands to a certain frequency if set to
+            if throttle and command["immediate"]:
+                next_uplink_time = self.last_uplink_time + datetime.timedelta(seconds=command["period"])
+                should_send = datetime.datetime.utcnow() > next_uplink_time
 
-            logging.info("uplink command success: %s" % got_response)
-            logging.debug("full uplink response: %s" % rx)
+            if should_send:
+                logging.info("SENDING UPLINK COMMAND: %s" % command)
 
-            # look for (and extract) any packets in the buffer
-            self.scan_for_packets()
+                got_response, rx = self.transmitter.send(command["cmd"])
+                self.update_rx_buf(hexlify(rx))
+                self.last_uplink_time = datetime.datetime.utcnow()
 
-            if got_response:
-                return True, True
-            else:
-                self.tx_cmd_queue.insert(0, command) # add back command
-                return True, False
-        else:
-            return False, False
+                logging.info("uplink command %s" % ("SUCCESS" if got_response else "failed"))
+                logging.debug("full uplink response: %s" % rx)
+
+                if got_response:
+                    # remove command and immediate setting on success
+                    try:
+                        self.tx_cmd_queue.remove(command)
+                    except ValueError:
+                        logging.warn("uplink command couldn't be removed from queue on success")
+                    return True, True
+                else:
+                    return True, False
+        return False, False
+
+    def sending_periodic_tx_cmd(self):
+        if len(self.tx_cmd_queue) > 0:
+            command = self.tx_cmd_queue[0]
+            return command["immediate"]
+        return False
 
     def correct_for_doppler(self):
         """ Shifts the receive and transmit frequency of the XDL micro to compensate
@@ -347,6 +370,7 @@ class EQUiStation:
     # Receive/Decode Helpers
     ##################################################################
     def update_rx_buf(self, new):
+        """ Update rx buffer with the given HEX representation of data """
         self.rx_buf += new
         self.rx_dump_buf += new
 
@@ -732,6 +756,9 @@ class EQUiStation:
     def get_last_packet_rx(self):
         return self.last_packet_rx
 
+    def get_last_uplink_time(self):
+        return self.last_uplink_time
+
     def get_doppler_corrections(self):
         return self.doppler_corrections
 
@@ -758,7 +785,7 @@ class EQUiStation:
     def get_tx_cmd_queue(self):
         return self.tx_cmd_queue
 
-    def send_tx_cmd(self, cmd_name, immediate=False):
+    def send_tx_cmd(self, cmd_name, immediate=False, immediate_period_s=3):
         """ Queues the given transmit command (name) to
         be transmitted when best, or sets it to transmit immediately and
         continually if immediate is set.
@@ -766,17 +793,13 @@ class EQUiStation:
         if not self.transmitter.is_valid(cmd_name):
             return False
 
-        self.tx_cmd_queue.append({"cmd": cmd_name})
-        if not self.only_send_tx_cmd and immediate:
-            self.only_send_tx_cmd = True
+        cmd = {"cmd": cmd_name, "immediate": immediate}
+        if immediate:
+            cmd["period"] = immediate_period_s
+        self.tx_cmd_queue.append(cmd)
 
-        logging.info("uplink command%s queued: %s" % ("immediate" if immediate else "", cmd_name))
+        logging.info("uplink command%s queued: %s" % (" (immediate)" if immediate else "", cmd))
         return True
-
-    def cancel_immediate_tx_cmd(self, remove=True):
-        self.only_send_tx_cmd = False
-        if remove:
-            self.tx_cmd_queue.pop(0) # immediate is always at end
 
     def cancel_tx_cmd(self, cmd_name, all=True):
         """ Cancels the given TX command by name, either the first found or all. Returns whether found and cancelled"""

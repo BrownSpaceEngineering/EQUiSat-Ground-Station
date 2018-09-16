@@ -4,6 +4,7 @@ import threading
 import argparse
 import cmd
 import logging
+import datetime
 
 import groundstation
 import config
@@ -37,8 +38,10 @@ class GroundstationCLI(cmd.Cmd):
         """ Prints out a summary of the current status of the groundstation """
         print("===================================================================")
         print("station info:\n%s" % self.station.get_station_config())
+        print("NOW (for comparison):    %s" % datetime.datetime.utcnow())
         print("last data rx:            %s" % self.station.get_last_data_rx())
         print("last packet rx:          %s" % self.station.get_last_packet_rx())
+        print("last uplink:             %s" % self.station.get_last_uplink_time())
         print("update pass data time:   %s" % self.station.get_update_pass_data_time())
 
         print("doppler corrections: \n%s" % self.station.get_doppler_corrections_str())
@@ -54,8 +57,6 @@ class GroundstationCLI(cmd.Cmd):
     def do_tx_queue(self, line):
         """ Prints out the current TX queue """
         print(self.station.get_tx_cmd_queue())
-        if self.station.only_send_tx_cmd:
-            print("(transmitting first constantly)")
 
     def do_rx(self, line):
         """ Prints out the entire RX buffer """
@@ -64,15 +65,17 @@ class GroundstationCLI(cmd.Cmd):
         print(buf)
 
     def do_tx(self, line):
-        """ Queues the given uplink command or sends immediately if set to """
+        """ Queues the given uplink command or sends periodically with the given period if set to """
         args = line.split(" ")
-        if not (1 <= len(args) <= 2):
-            print("invalid arguments")
+        if not (1 <= len(args) <= 3):
+            print("invalid arguments, need <cmd> <immediate setting> <period(s)>")
         else:
             cmd = args[0]
-            immediate = args[1] if len(args) == 2 else False
+            immediate = args[1] if len(args) >= 2 else False
             immediateSet = immediate == "true" or immediate == "now" or immediate == "on"
-            success = self.station.send_tx_cmd(cmd, immediate=immediateSet)
+            period = int(args[2]) if len(args) >= 3 else 3
+
+            success = self.station.send_tx_cmd(cmd, immediate=immediateSet, immediate_period_s=period)
             if not success:
                 print("invalid uplink command; available:")
                 for cmd in config.UPLINK_RESPONSES.keys():
@@ -133,7 +136,7 @@ def main():
     args = parser.parse_args()
 
     station = groundstation.EQUiStation()
-    station.set_logging_level(logging.DEBUG if args.debug else logging.WARNING)
+    station.set_logging_level(logging.DEBUG if args.debug else logging.INFO)
 
     # null out serial args if test added
     if args.test:
