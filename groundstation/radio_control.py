@@ -5,7 +5,6 @@ import time
 import binascii
 import serial
 import mock_serial
-import struct
 import logging
 import config
 
@@ -78,7 +77,8 @@ def sendConfigCommand(ser, buf, response_cmd, response_size=1,
                 data = ser.read(size=ser.in_waiting)
                 rx_buf += data
 
-                okay, response = checkCommandResponse(data, response_cmd, response_size)
+                # scale whole buffer for complete response
+                okay, response = checkCommandResponse(rx_buf, response_cmd, response_size)
                 logging.debug("got radio command response (%s; %s): %s" % \
                         (okay, binascii.hexlify(response), binascii.hexlify(data)))
                 if okay or response_cmd == "":
@@ -93,15 +93,15 @@ def sendConfigCommand(ser, buf, response_cmd, response_size=1,
     return False, rx_buf, bytearray()
 
 def checkCommandResponse(buf, response_cmd, response_size):
-    """ Checks for a valid response with a payload of size response_size in the buffer 
-    and returns the contents of the response """
+    """ Checks for a valid response with a payload of size response_size (including the response command)
+    in the buffer and returns the contents of the response """
     if response_cmd == "":
         return False, bytearray()
     start = buf.find(START_OF_HEADER)
     # checks 
     if start == -1:
         return False, bytearray()
-    if len(buf)-start < 1 + response_size + 1: # start of header, response, checksum
+    if len(buf)-start <= 1 + response_size + 1: # start of header, response (incld. response_cmd), checksum
         return False, bytearray()
 
     response = buf[start+2:start+2+response_size]
@@ -122,7 +122,7 @@ def validateConfigResponse(expected, rets):
     actual = rets[2][0] if len(rets[2]) > 0 else ""
     response_okay = actual == expected
     if not response_okay:
-        logging.error("unexpected response: got %s, wanted %s" % (actual, expected))
+        logging.error("unexpected response: got %s, wanted %s" % (binascii.hexlify(actual), binascii.hexlify(expected)))
     return rets[0] and response_okay, rets[1]
 
 def computeChecksum(payload):

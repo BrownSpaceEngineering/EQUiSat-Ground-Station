@@ -39,14 +39,9 @@ class GroundstationCLI(cmd.Cmd):
         print("station info:\n%s" % self.station.get_station_config())
         print("last data rx:            %s" % self.station.get_last_data_rx())
         print("last packet rx:          %s" % self.station.get_last_packet_rx())
-        print("doppler correct time:    %s" % self.station.get_doppler_correct_time())
         print("update pass data time:   %s" % self.station.get_update_pass_data_time())
 
-        print("cur radio frequencies:   %f -> %f (+/- %d kHz)" % (
-        self.station.get_radio_inbound_freq_hz()/10.0e6,
-            self.station.get_radio_outbound_freq_hz()/10.0e6,
-            self.station.get_radio_doppler_correction()
-        ))
+        print("doppler corrections: \n%s" % self.station.get_doppler_corrections_str())
 
         next_pass_info = None
         if self.station.get_next_pass_data() is not None:

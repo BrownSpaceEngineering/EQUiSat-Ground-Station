@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
+num_lines=10
 if [ $1 ];
 then
-	watch "journalctl -u equistation.service --no-pager | tail -n $1"
-else
-	watch "journalctl -u equistation.service --no-pager | tail -n 10"
+	num_lines=$1
 fi
+journalctl -u equistation.service --no-pager -n $num_lines -f
+
