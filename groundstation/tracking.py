@@ -11,14 +11,12 @@ from collections import OrderedDict
 import station_config as station
 
 DEFAULT_TLE_FNAME = "tle.txt"
-DEFAULT_TLE_GET_ROUTE = "http://tracking.brownspace.org/api/tle" #"https://www.celestrak.com/cgi-bin/TLE.pl?CATNR=%s"
+TLE_GET_ROUTE = "http://tracking.brownspace.org/api/tle" #"https://www.celestrak.com/cgi-bin/TLE.pl?CATNR=%s"
 
 class SatTracker:
-    def __init__(self, norad_id=None, single_tle_route=None, tle_fname=DEFAULT_TLE_FNAME, tle_route=DEFAULT_TLE_GET_ROUTE):
+    def __init__(self, norad_id, tle_fname=DEFAULT_TLE_FNAME):
         self.norad_id = str(norad_id)
         self.tle_fname = tle_fname
-        self.single_tle_route = single_tle_route
-        self.tle_route = tle_route
         self.tle = None
         self.load_tle() # populates self.tle
 
@@ -46,10 +44,10 @@ class SatTracker:
             # date info: http://rhodesmill.org/pyephem/date
             # next_pass info:
             # https://github.com/brandon-rhodes/pyephem/blob/592ecff661adb9c5cbed7437a23d705555d7ce57/libastro-3.7.7/riset_cir.c#L17
-            if passData is None:
+            if passData == None:
                 return None
             for data in passData:
-                if data is None:
+                if data == None:
                     return None
 
             return OrderedDict([
@@ -66,16 +64,11 @@ class SatTracker:
 
     # TLE handling adapted from https://github.com/tydlwav/GSW-Sat-Tracking work
     def load_tle(self):
-        if self.norad_id is None or self.single_tle_route is not None:
-            if self.single_tle_route is None:
-                raise ValueError("No valid TLE source provided")
-            self.update_tle()
-
         for i in range(2):
             try:
                 with open(self.tle_fname, 'r') as tle_file:
                     tles = tle_file.read()
-                    self.tle = self.extract_tle(tles, norad_id=self.norad_id, single_tle_route=self.single_tle_route)
+                    self.tle = self.extract_tle(self.norad_id, tles)
                     if self.tle is None:
                         raise IOError("tracking file could not be parsed")
 
@@ -115,7 +108,7 @@ class SatTracker:
         return ephem.Date((dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second))
 
     @staticmethod
-    def extract_tle(tle_data, norad_id=None, single_tle_route=None):
+    def extract_tle(norad_id, tle_data):
         """ Extracts the TLE set with the given string NORAD ID from the string list of TLEs,
             and returns a three-element string list of the satellite name and two lines of elements.
             Returns None if no TLEs for norad_id was found. """
@@ -125,30 +118,21 @@ class SatTracker:
         if len(tle_list) < 3:
             return None
 
-        if single_tle_route is not None:
+        for i in range(0, len(tle_list)-2):
             try:
-                return ephem.readtle(tle_list[0], tle_list[1], tle_list[2])
-            except ValueError as e:
-                logging.error("Error reading single TLE file: %s" % e)
-                return None
+                tle = ephem.readtle(tle_list[i], tle_list[i+1], tle_list[i+2])
+            except ValueError:
+                # watch for bad TLE line formats when we're in the middle of the line
+                continue
 
-        elif norad_id is not None:
-            for i in range(0, len(tle_list) - 2):
-                try:
-                    tle = ephem.readtle(tle_list[i], tle_list[i + 1], tle_list[i + 2])
-                except ValueError:
-                    # watch for bad TLE line formats when we're in the middle of the line
-                    continue
+            if str(tle.catalog_number) == norad_id:
+                return tle
 
-                if str(tle.catalog_number) == norad_id:
-                    return tle
-            return None
-        else:
-            raise ValueError("No valid TLE source provided")
+        return None
 
-    @staticmethod
-    def fetch_tle(tle_route):
-        req = requests.get(tle_route)
+    def update_tle(self):
+        """ Update the TLE data from the remote Celestrack server. Returns if successful """
+        req = requests.get(TLE_GET_ROUTE)
         if req.status_code != requests.codes.ok:
             return False
         tle_data = str(req.text.decode("utf8"))
@@ -159,31 +143,16 @@ class SatTracker:
             tle_data_list = tle_data_list[13:16]
             tle_data = "\n".join(tle_data_list)
 
-        return tle_data
-
-    def update_tle(self):
-        """ Update the TLE data from the remote Celestrack server. Returns if successful """
-        ret = True
-        if self.single_tle_route is not None:
-            tle_data = self.fetch_tle(self.single_tle_route)
-        elif self.norad_id is not None:
-            tle_data = self.fetch_tle(self.tle_route)
-        else:
-            raise ValueError("No valid TLE source provided")
-
         # update memory cache
-        self.tle = self.extract_tle(tle_data, norad_id=self.norad_id, single_tle_route=self.single_tle_route)
-        if self.tle is None:
-            ret = False
+        self.tle = self.extract_tle(self.norad_id, tle_data)
 
-        # update file cache
         try:
+            # update file cache
             with open(self.tle_fname, 'w') as tle_file:
                 # Make file blank
                 tle_file.truncate(0)
                 tle_file.write(tle_data)
-                return ret
-
+                return True
         except IOError as e:
             logging.error("tracking: error writing TLE file: %s" % e)
             return False
@@ -210,11 +179,11 @@ class SatTracker:
 
 if __name__ == "__main__":
     import config
-    st = SatTracker(norad_id=config.SAT_CATALOG_NUMBER)
-    #st.update_tle()
+    st = SatTracker(config.SAT_CATALOG_NUMBER)
+    st.update_tle()
     print("next passes:")
-    st.get_next_pass()
     passes = st.get_next_passes()
     for pas in passes:
         print(SatTracker.pass_tostr(pas))
-    #print(st.pyephem_pass_test()) #"2018/7/4 6:00:00"))
+
+        #print(st.pyephem_pass_test()) #"2018/7/4 6:00:00"))
