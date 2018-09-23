@@ -796,7 +796,7 @@ class EQUiStation:
         cmd = {"cmd": cmd_name, "immediate": immediate}
         if immediate:
             cmd["period"] = immediate_period_s
-        self.tx_cmd_queue.append(cmd)
+        self.tx_cmd_queue.insert(0, cmd)
 
         logging.info("uplink command%s queued: %s" % (" (immediate)" if immediate else "", cmd))
         return True
