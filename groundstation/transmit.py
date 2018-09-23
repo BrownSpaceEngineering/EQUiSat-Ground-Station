@@ -90,11 +90,11 @@ class Uplink:
         Uplink.sendUplink(cmds['flashrevive_cmd'], config.UPLINK_RESPONSES['flashrevive_cmd'], ser)
 
 def xdl_sweep_test(ser):
-    for i in range(255):
-        ser.write(chr(i)*1000)
+    for i in range(256):
+        ser.write(chr(i)*(18*3))
         print("i: %d" % i)
         time.sleep(0.5)
-        print ser.read(size=ser.in_waiting),
+        #print ser.read(size=ser.in_waiting),
 
 def xdl_test(ser):
     for i in range(3):
@@ -118,6 +118,16 @@ def xdl_test(ser):
         time.sleep(0.5)
 
     time.sleep(10)
+
+def xdl_linearity_test(ser):
+    # do in 18 byte sets because block size is 18 bits
+    # and lcm(18, 8) is 72 bits or 9 bytes, and we double it
+    # this ensures the sequence will be periodic with respect to blocks
+    for i in range(4):
+        num = chr(0)*17 + chr(i)
+        ser.write(num*5)
+        print("seq %d: %s" % (i, binascii.hexlify(num)))
+        time.sleep(0.5)
 
 def ping_test(ser):
     try:
@@ -147,7 +157,8 @@ def packet_test(ser):
 
 tests = {
     "xdl_sweep_test": xdl_sweep_test,
-    "xdl_test": xdl_test,
+    "xdl_generic_test": xdl_test,
+    "xdl_linearity_test": xdl_linearity_test,
     "ping_test": ping_test,
     "packet_test": packet_test
 }
