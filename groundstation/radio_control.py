@@ -6,6 +6,8 @@ import binascii
 import serial
 import mock_serial
 import logging
+import struct
+
 import config
 
 DEFAULT_RETRIES = 5
@@ -63,7 +65,7 @@ def program(ser):
 def sendConfigCommand(ser, buf, response_cmd, response_size=1,
         retries=DEFAULT_RETRIES, retry_delay_s=DEFAULT_RETRY_DELAY):
     """ Sends the given config command to the radio over the given serial line.
-    Returns whether a valid response was recieved, all data recieved over RX, and the response args """
+    Returns whether a valid response was received, all data received over RX, and the response args """
     rx_buf = ""
     retry = -1
     while retry < retries:
@@ -208,6 +210,29 @@ def getTxFreq(ser, channel):
     command = buildCommand(b'\x38', chr(channel))
     rets = sendConfigCommand(ser, command, b'\xb8', response_size=5)
     return validateConfigResponse(b'\x00', rets)
+
+def getRSSICurrent(ser, retries=DEFAULT_RETRIES):
+    """ Returns the instantaneous RSSI current as a 2-byte int, or None on error """
+    command = buildCommand(b'\x46')
+    rets = sendConfigCommand(ser, command, b'\xc6', response_size=2, retries=retries)
+    return _processRSSI(rets)
+
+def getPacketRSSICurrent(ser, retries=DEFAULT_RETRIES):
+    """ Returns the RSSI current of the last good data packet, as a 2-byte int, or None on error """
+    command = buildCommand(b'\x47')
+    rets = sendConfigCommand(ser, command, b'\xc7', response_size=2, retries=retries)
+    return _processRSSI(rets)
+
+def _processRSSI(rets):
+    if rets[0]:
+        try:
+            # treat the two bytes returned as a big-endian 2-byte short
+            # (MSB is first)
+            return True, rets[1], struct.unpack('>h', data)
+        except struct.error:
+            return False, rets[1], None
+    else:
+        return False, rets[1], None
 
 def configRadio(ser):
     enterCommandMode(ser, dealer=True)
