@@ -166,13 +166,13 @@ class EQUiStation:
         self.pre_init(radio_preconfig)
         while True:
             try:
-                # try and receive data (a packet),
-                got_packet = self.receive()
+                # try and receive data
+                got_data = self.receive()
 
                 # if we got a packet try and send any TX commands,
-                send_tx = got_packet or self.sending_periodic_tx_cmd()
+                send_tx = got_data or self.sending_periodic_tx_cmd()
                 if send_tx:
-                    self.transmit(throttle=not got_packet)
+                    self.transmit(throttle=not got_data)
                     # look for (and extract/send) any packets in the buffer, trimming
                     # the buffer after finding any. (Only finds full packets)
                     # We do this here because we want to send TX commands ASAP after packet RX
@@ -192,8 +192,9 @@ class EQUiStation:
                 self.publish_received_packets()
 
                 # sleep to slow looping, but make it faster if we're sending TX commands so they can send faster
-                if self.sending_periodic_tx_cmd():
-                    time.sleep(0.1)
+                # after we get a packet (we most likely get the packet during this sleep and grab it later)
+                if len(self.tx_cmd_queue) > 0:
+                    time.sleep(0.05)
                 else:
                     time.sleep(0.5)
 
@@ -205,7 +206,7 @@ class EQUiStation:
     ##################################################################
     def receive(self):
         """ Attempts to receive data and look for packets from the radio.
-         Returns whether a packet was received. """
+         Returns whether data was received. """
         # grab all the data we can off the serial line
         inwaiting = self.ser.in_waiting
         if inwaiting > 0:
