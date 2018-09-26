@@ -6,8 +6,8 @@
 import sys, time, binascii, csv, logging, serial, struct
 import config, station_config
 
-DEF_TX_REPEATS = 1
-DEF_TX_RESPONSE_TIMEOUT_S = 1.2
+DEF_TX_REPEATS = 12
+DEF_TX_RESPONSE_TIMEOUT_S = 0.3
 
 class Uplink:
     def __init__(self, ser, uplink_file=config.UPLINK_COMMANDS_FILE, uplink_responses=config.UPLINK_RESPONSES):
