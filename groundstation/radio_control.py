@@ -228,7 +228,7 @@ def _processRSSI(rets):
         try:
             # treat the two bytes returned as a big-endian 2-byte short
             # (MSB is first)
-            return True, rets[1], struct.unpack('>h', rets[2])
+            return True, rets[1], struct.unpack('>h', rets[2])[0]
         except struct.error:
             return False, rets[1], None
     else:

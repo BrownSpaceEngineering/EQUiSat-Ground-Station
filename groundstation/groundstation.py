@@ -142,8 +142,10 @@ class EQUiStation:
         """ Register handlers for the main radio serial commands so they succeed """
         # (only do frequency setting responses for now)
         ser.on("\+\+\+", response="") # cmd mode
-        ser.on("0103\w\w\w\w00", response=bytearray(b"\x01\x83\x00\x7c"), in_hex=True)
-        ser.on("011d01e100", response=bytearray(b"\x01\x9d\x00\x62"), in_hex=True)
+        ser.on("0103\w\w\w\w00", response=bytearray(b"\x01\x83\x00\x7c"), in_hex=True) # set freq
+        ser.on("011d01e100", response=bytearray(b"\x01\x9d\x00\x62"), in_hex=True) # exit cmd mode
+        ser.on("0146b900", response=bytearray(b"\x01\xc6\x01\x00\x38"), in_hex=True) # get RSSI
+        ser.on("0147b800", response=bytearray(b"\x01\xc7\x01\x00\x37"), in_hex=True)  # get packet RSSI
 
     def pre_init(self, radio_preconfig):
         if radio_preconfig:
