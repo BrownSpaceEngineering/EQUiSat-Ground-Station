@@ -48,6 +48,9 @@ class EQUiStation:
     DOPPLER_FAIL_RETRY_DELAY_S = 1.2*60 # time to delay before retrying doppler connect
     PACKET_SEND_FREQ_S = 20
 
+    # whether to adjust doppler correction times to avoid interference with transmissions
+    INTERLACE_TIMES = False
+
     def __init__(self):
         # globals for external api use, etc.
         self.last_data_rx = None
@@ -253,7 +256,7 @@ class EQUiStation:
         # on every iteration as we're coming onto a pass,
         # check if the doppler_correct_time will land close
         # to our expected next RX, and correct it if necessary
-        if self.ready_for_pass:
+        if INTERLACE_TIMES and self.ready_for_pass:
             self.interlace_doppler_and_tx_times()
 
         now = datetime.datetime.utcnow()
