@@ -7,7 +7,7 @@ from groundstation import groundstation
 from groundstation.packetparse import packetparse
 import json
 
-CONVERT_TO_HEX = True # as opposed to assuming it's in hex
+CONVERT_TO_HEX = False # as opposed to assuming it's in hex
 WRITE_PARSED = True
 CSV_HEADERS = ["packet", "valid (only hex chars)", "parsed timestamp", "parsed message type", "parsed sat state", "full parsed JSON"]
 
@@ -21,16 +21,19 @@ def check_line_for_packets(line, outwriter):
         valid = packetparse.is_hex_str(packet)
 
         # grab some metadata
-        preamble = {"timestamp": -1, "message_type": "[corrupted]", "satellite_state": "[corrupted]"}
-        if valid:
-            preamble = packetparse.parse_preamble(packet)
+        try:
+            preamble = {"timestamp": -1, "message_type": "[corrupted]", "satellite_state": "[corrupted]"}
+            if valid:
+                preamble = packetparse.parse_preamble(packet)
 
-        # parse too if asked
-        parsed = ""
-        if WRITE_PARSED and valid:
-            parsed, _ = packetparse.parse_packet(packet)
+            # parse too if asked
+            parsed = ""
+            if WRITE_PARSED and valid:
+                parsed, _ = packetparse.parse_packet(packet)
 
-        outwriter.writerow([packet, valid, preamble["timestamp"], preamble["message_type"], preamble["satellite_state"], json.dumps(parsed, indent=4)])
+            outwriter.writerow([packet, valid, preamble["timestamp"], preamble["message_type"], preamble["satellite_state"], json.dumps(parsed, indent=4)])
+        except KeyError:
+            continue # parsing error
 
     return len(packets)
 

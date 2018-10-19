@@ -11,6 +11,7 @@ from binascii import hexlify
 import requests
 import yagmail
 from collections import OrderedDict
+import copy
 
 import mock_serial
 from utils import *
@@ -47,12 +48,16 @@ class EQUiStation:
     DOPPLER_FAIL_RETRY_DELAY_S = 1.2*60 # time to delay before retrying doppler connect
     PACKET_SEND_FREQ_S = 20
 
+    # whether to adjust doppler correction times to avoid interference with transmissions
+    INTERLACE_TIMES = False
+
     def __init__(self):
         # globals for external api use, etc.
         self.last_data_rx = None
         self.last_packet_rx = None
         self.rx_buf = ""
         self.rx_dump_buf = ""
+        self.rx_since_pass_start = 0
         self.received_packets = []
         self.tx_cmd_queue = []
         self.only_send_tx_cmd = False
@@ -67,6 +72,10 @@ class EQUiStation:
         self.next_packet_scan = datetime.datetime.utcnow()
         self.radio_cur_channel = 1 # default no correction channel
         self.ready_for_pass = True # we preconfig on first boot
+
+        # RSSI tracking
+        self.latest_rssi = None
+        self.latest_packet_rssi = None
 
         # just stored to be accessible to API, no actual use
         self.next_pass_data = {}
@@ -120,7 +129,8 @@ class EQUiStation:
             ser_infilename=None, ser_outfilename=None, file_read_size=PACKET_STR_LEN/4):
         try:
             if ser_infilename is not None and ser_outfilename is not None:
-                with mock_serial.MockSerial(infile_name=ser_infilename, outfile_name=ser_outfilename, max_inwaiting=file_read_size) as ser:
+                with mock_serial.MockSerial(infile_name=ser_infilename, outfile_name=ser_outfilename,
+                                            max_inwaiting=file_read_size, unhex=config.UNHEXLIFY_TEST_FILE) as ser:
                     self.ser = ser
                     self.setup_mock_serial(ser)
                     self.mainloop(radio_preconfig=radio_preconfig)
@@ -135,8 +145,10 @@ class EQUiStation:
         """ Register handlers for the main radio serial commands so they succeed """
         # (only do frequency setting responses for now)
         ser.on("\+\+\+", response="") # cmd mode
-        ser.on("0103\w\w\w\w00", response=bytearray(b"\x01\x83\x00\x7c"), in_hex=True)
-        ser.on("011d01e100", response=bytearray(b"\x01\x9d\x00\x62"), in_hex=True)
+        ser.on("0103\w\w\w\w00", response=bytearray(b"\x01\x83\x00\x7c"), in_hex=True) # set freq
+        ser.on("011d01e100", response=bytearray(b"\x01\x9d\x00\x62"), in_hex=True) # exit cmd mode
+        ser.on("0146b900", response=bytearray(b"\x01\xc6\x01\x00\x38"), in_hex=True) # get RSSI
+        ser.on("0147b800", response=bytearray(b"\x01\xc7\x01\x00\x37"), in_hex=True)  # get packet RSSI
 
     def pre_init(self, radio_preconfig):
         if radio_preconfig:
@@ -201,6 +213,7 @@ class EQUiStation:
             in_data = self.ser.read(size=inwaiting)
             self.update_rx_buf(hexlify(in_data))
             self.last_data_rx = datetime.datetime.utcnow()
+            self.rx_since_pass_start += len(in_data)
 
             # look for (and extract/send) any packets in the buffer, trimming
             # the buffer after finding any. (Only finds full packets)
@@ -219,6 +232,7 @@ class EQUiStation:
 
             got_response, rx = self.transmitter.send(command["cmd"])
             self.update_rx_buf(hexlify(rx))
+            self.rx_since_pass_start += len(rx)
 
             logging.info("uplink command success: %s" % got_response)
             logging.debug("full uplink response: %s" % rx)
@@ -242,7 +256,7 @@ class EQUiStation:
         # on every iteration as we're coming onto a pass,
         # check if the doppler_correct_time will land close
         # to our expected next RX, and correct it if necessary
-        if self.ready_for_pass:
+        if self.INTERLACE_TIMES and self.ready_for_pass:
             self.interlace_doppler_and_tx_times()
 
         now = datetime.datetime.utcnow()
@@ -253,6 +267,7 @@ class EQUiStation:
             good = self.update_radio_for_pass()
             if good:
                 self.ready_for_pass = True
+                self.rx_since_pass_start = 0 # reset count now
                 # (NOTE: doppler_correct_time updated in above function)
                 # schedule the next update (tentatively) for an orbital period away
                 self.update_pass_data_time = datetime.datetime.utcnow() + \
@@ -413,19 +428,45 @@ class EQUiStation:
                           (raw, len(corrected), errors_corrected, error, corrected, parsed)
         logging.info("publishing packet: %s" % packet_info_msg)
 
-        json = {
+        # convert pass data and doppler correction dates to strings
+        pass_data_strs = None
+        doppler_corrections_strs = None
+        try:
+            if self.next_pass_data is not None:
+                pass_data_strs = copy.deepcopy(self.next_pass_data)
+                pass_data_strs["rise_time"] = pass_data_strs["rise_time"].isoformat()
+                pass_data_strs["max_alt_time"] = pass_data_strs["max_alt_time"].isoformat()
+                pass_data_strs["set_time"] = pass_data_strs["set_time"].isoformat()
+
+            if self.doppler_corrections is not None:
+                doppler_corrections_strs = copy.deepcopy(self.doppler_corrections)
+                for correct in doppler_corrections_strs:
+                    correct["time"] = correct["time"].isoformat()
+        except AttributeError:
+            pass
+
+        jsn = {
             "raw": raw,
             "corrected": corrected,
             "transmission": parsed,
             "secret": station.station_secret,
             "station_name": station.station_name,
-            "errors_corrected": errors_corrected
+            "errors_corrected": errors_corrected,
+            "pass_data": pass_data_strs,
+            "doppler_corrections": doppler_corrections_strs,
+            "doppler_correction":
+                self.doppler_corrections[self.doppler_correction_index]["freq"] \
+                    if self.doppler_correction_index < len(self.doppler_corrections) \
+                    else None,
+            "latest_rssi": self.latest_rssi,
+            "latest_packet_rssi": self.latest_packet_rssi,
+            "rx_since_pass_start": self.rx_since_pass_start
         }
 
         if config.PUBLISH_PACKETS:
             # publish packet to API
             try:
-                r = requests.post(route, json=json)
+                r = requests.post(route, json=jsn)
                 if r.status_code != requests.codes.ok:
                     logging.warning("couldn't publish packet (%d): %s" % (r.status_code, r.text))
             except Exception as ex:
@@ -477,7 +518,7 @@ class EQUiStation:
     ##################################################################
     def radio_activate_pass_freq(self, freq_hz):
         """ (Quickly) sets the radios frequency to the closest supported value to freq_hz.
-        Does so by simply changing pre-configured channels """
+        Does so by simply changing pre-configured channels. ALSO records RSSI in the process """
         step = radio_control.RADIO_FREQ_STEP_HZ
         cutoff_step2 = 1.5*step # closer to 1*step if less than this
         cutoff_step1 = 0.5*step # closer to 0 if less than this
@@ -495,12 +536,14 @@ class EQUiStation:
         else: # < -cutoff_step2
             self.radio_cur_channel = 5 # -2*step
 
-        # apply channel change
+        # apply channel change AND grab RSSI readings
         enter_okay, rx1 = radio_control.enterCommandMode(self.ser)
         channel_okay, rx2 = radio_control.setChannel(self.ser, self.radio_cur_channel, retries=self.RADIO_MAX_SETCHAN_RETRIES)
-        exit_okay, rx3 = radio_control.exitCommandMode(self.ser, retries=self.RADIO_MAX_SETCHAN_RETRIES)
+        rssi_instant_okay, rx3, instant_rssi = radio_control.getRSSICurrent(self.ser, retries=0)
+        rssi_packet_okay, rx4, packet_rssi = radio_control.getPacketRSSICurrent(self.ser, retries=0)
+        exit_okay, rx5 = radio_control.exitCommandMode(self.ser, retries=self.RADIO_MAX_SETCHAN_RETRIES)
 
-        self.update_rx_buf(hexlify(rx1 + rx2 + rx3))
+        self.update_rx_buf(hexlify(rx1 + rx2 + rx3 + rx4 + rx5))
         # don't scan for packets in RX buf because we're pressed for time
         good = enter_okay and channel_okay and exit_okay
 
@@ -511,6 +554,15 @@ class EQUiStation:
             "success" if good else "FAILURE"
         ))
         logging.debug("upcoming corrections:\n%s" % self.get_doppler_corrections_str(self.doppler_correction_index+1))
+
+        # update RSSI values
+        if rssi_instant_okay:
+            self.latest_rssi = instant_rssi
+        if rssi_packet_okay:
+            self.latest_packet_rssi = packet_rssi
+        logging.info("RSSI readings: %s dBm (instant), %s dBm (last packet)" % \
+                     ("%4d" % instant_rssi if instant_rssi else "<error>", "%4d" % packet_rssi if packet_rssi else "<error>"))
+
         return good
 
     def radio_preconfig_pass_freqs(self):
@@ -625,6 +677,11 @@ class EQUiStation:
         success = self.tracker.update_tle()
         if not success:
             logging.error("error updating TLE data to latest")
+
+        if self.tracker.tle is not None:
+            logging.info("Using TLEs: %s; id %s" % (self.tracker.tle.name, self.tracker.tle.catalog_number))
+        else:
+            logging.warning("No TLE found!")
 
         # compute next pass geometrically
         next_pass_data = self.tracker.get_next_pass()

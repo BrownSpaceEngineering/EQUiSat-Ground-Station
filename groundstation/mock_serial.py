@@ -4,13 +4,13 @@ import random
 import re
 import logging
 
-
 # A mock serial class that can be hot-swapped with serial.Serial to emulate it.
 class MockSerial:
-    def __init__(self, infile_name=None, outfile_name=None, max_inwaiting=100):
+    def __init__(self, infile_name=None, outfile_name=None, max_inwaiting=100, unhex=False):
         self.infile = open(infile_name, "r")
         self.outfile = open(outfile_name, "w")
 
+        self.unhex = unhex
         self.max_inwaiting = max_inwaiting
 
         # write cbs are tried on each write,
@@ -86,22 +86,26 @@ class MockSerial:
                 # remove response from queue
                 self.response_queue.pop(0)
                 # return all of response but nothing else (less than size is fine)
-                return response
+                ret = response
             else:  # len(response) > size
                 # remove what we've written from queue element
                 self.response_queue[0] = response[size:]
                 # take only what part we need; rest will be taken next time
-                return response[:size]
+                ret = response[:size]
 
         elif self.infile is None:
-            return self._rand_seq(size)
-
+            ret = self._rand_seq(size)
         else:
             # wrap around when can't read anymore
-            data = self.infile.read(size)
-            if len(data) < size:
+            ret = self.infile.read(size)
+            if len(ret) < size:
                 self.infile.seek(0)
-            return data
+
+        # return value, possibly changed
+        if self.unhex:
+            return binascii.unhexlify(ret)
+        else:
+            return ret
 
     def close(self):
         if self.outfile is not None:
@@ -116,7 +120,10 @@ class MockSerial:
             self.infile.flush()
 
     def _rand_in_waiting(self):
-        return random.randint(1, self.max_inwaiting)
+        val = random.randint(1, self.max_inwaiting)
+        if self.unhex and val % 2 != 0:
+            val -= 1
+        return val
 
     def _rand_seq(self, size):
         seq = ""
