@@ -256,7 +256,7 @@ class EQUiStation:
         # on every iteration as we're coming onto a pass,
         # check if the doppler_correct_time will land close
         # to our expected next RX, and correct it if necessary
-        if INTERLACE_TIMES and self.ready_for_pass:
+        if self.INTERLACE_TIMES and self.ready_for_pass:
             self.interlace_doppler_and_tx_times()
 
         now = datetime.datetime.utcnow()
