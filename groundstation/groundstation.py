@@ -147,8 +147,8 @@ class EQUiStation:
         ser.on("\+\+\+", response="") # cmd mode
         ser.on("0103\w\w\w\w00", response=bytearray(b"\x01\x83\x00\x7c"), in_hex=True) # set freq
         ser.on("011d01e100", response=bytearray(b"\x01\x9d\x00\x62"), in_hex=True) # exit cmd mode
-        ser.on("0146b900", response=bytearray(b"\x01\xc6\x01\x00\x38"), in_hex=True) # get RSSI
-        ser.on("0147b800", response=bytearray(b"\x01\xc7\x01\x00\x37"), in_hex=True)  # get packet RSSI
+        ser.on("0146b900", response=bytearray(b"\x01\xc6\x01\x00\x38"), in_hex=True) # response to get RSSI
+        ser.on("0147b800", response=bytearray(b"\x01\xc7\x01\x00\x37"), in_hex=True)  # response to get packet RSSI
 
     def pre_init(self, radio_preconfig):
         if radio_preconfig:
@@ -157,7 +157,6 @@ class EQUiStation:
         # set up transmitter for radio
         self.transmitter = transmit.Uplink(self.ser)
         if config.RUN_TEST_UPLINKS:
-            self.send_tx_cmd('echo_cmd')
             self.send_tx_cmd('kill3_cmd')
             self.send_tx_cmd('kill7_cmd')
             self.send_tx_cmd('killf_cmd')
@@ -166,6 +165,12 @@ class EQUiStation:
             self.send_tx_cmd('revive_cmd')
             self.send_tx_cmd('flashkill_cmd')
             self.send_tx_cmd('flashrevive_cmd')
+            self.send_tx_cmd('echo_cmd')
+
+            if isinstance(self.ser, mock_serial.MockSerial):
+                cmd = 'echo_cmd'
+                self.ser.on(self.transmitter.cmds[cmd], response=bytearray(self.transmitter.responses[cmd]),
+                        in_hex=False)  # response to ECHO
 
         # HARD CODED COMMANDS
         #self.send_tx_cmd('echo_cmd')
@@ -250,6 +255,7 @@ class EQUiStation:
 
                 got_response, rx = self.transmitter.send(command["cmd"])
                 self.update_rx_buf(hexlify(rx))
+                self.rx_since_pass_start += len(rx)
                 self.last_uplink_time = datetime.datetime.utcnow()
 
                 logging.info("uplink command %s" % ("SUCCESS" if got_response else "failed"))

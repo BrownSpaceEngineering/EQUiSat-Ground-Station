@@ -6,9 +6,11 @@
 import sys, time, binascii, csv, logging, serial, struct
 import config, station_config
 
-DEF_CMD_REPEATS = 15
-DEF_TX_REPEATS = 12
-DEF_TX_RESPONSE_TIMEOUT_S = 0.3
+# how many times to repeat the command in a single transmission
+DEF_CMD_REPEATS = 5
+# try transmissions for 12*0.3s = 3.6s = plenty of time to hit the window after hearing a packet
+DEF_TX_REPEATS = 12 # how many repeat attempts of transmissions
+DEF_TX_RESPONSE_TIMEOUT_S = 0.3 # how long to wait for responses
 
 class Uplink:
     def __init__(self, ser, uplink_file=config.UPLINK_COMMANDS_FILE, uplink_responses=config.UPLINK_RESPONSES):
@@ -20,7 +22,7 @@ class Uplink:
     def loadUplinkCommands(filename):
         try:
             with open(filename) as file:
-                #format of csv is "name": "test",
+                #format of csv is "cmd name": "cmd bytes",
                 reader = csv.reader(file)
                 next(reader)
                 cmds = dict(reader)
@@ -67,6 +69,8 @@ class Uplink:
                 # search for expected response in RX buffer
                 index = rx_buf.find(response)
                 if index != -1:
+                    # take only the response out of the rx buffer,
+                    # or everything if it's less than the max length
                     if index + config.RESPONSE_LEN < len(rx_buf):
                         fullResponse = rx_buf[index:index+config.RESPONSE_LEN]
                     else:
