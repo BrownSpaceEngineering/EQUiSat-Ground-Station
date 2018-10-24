@@ -6,7 +6,9 @@
 import sys, time, binascii, csv, logging, serial, struct
 import config, station_config
 
-TX_RESPONSE_TIMEOUT_S = 1.0
+DEF_CMD_REPEATS = 15
+DEF_TX_REPEATS = 12
+DEF_TX_RESPONSE_TIMEOUT_S = 0.3
 
 class Uplink:
     def __init__(self, ser, uplink_file=config.UPLINK_COMMANDS_FILE, uplink_responses=config.UPLINK_RESPONSES):
@@ -30,30 +32,34 @@ class Uplink:
         """ Returns whether the command is a valid uplink command """
         return self.responses.has_key(cmd_name) and self.cmds.has_key(cmd_name)
 
-    def send(self, cmd_name, repeats=1):
+    def send(self, cmd_name, cmd_repeats=DEF_CMD_REPEATS, repeats=DEF_TX_REPEATS, tx_response_timeout_s=DEF_TX_RESPONSE_TIMEOUT_S):
         """ Tries the given command (by name) and returns whether successful. Throws error on invalid command. """
         if not self.is_valid(cmd_name):
             raise ValueError("Invalid uplink command name: %s" % cmd_name)
         cmd = self.cmds[cmd_name]
         response = self.responses[cmd_name]
-        return self.sendUplink(cmd, response, self.ser, repeats=repeats)
+        return self.sendUplink(cmd, response, self.ser, cmd_repeats=cmd_repeats, repeats=repeats, tx_response_timeout_s=tx_response_timeout_s)
 
     @staticmethod
-    def sendUplink(cmd, response, ser, repeats=1):
+    def sendUplink(cmd, response, ser, cmd_repeats=DEF_CMD_REPEATS, repeats=DEF_TX_REPEATS, tx_response_timeout_s=DEF_TX_RESPONSE_TIMEOUT_S):
         """ Attempts to send uplink command and waits for a time to receive
             the expected response. Returns whether the response was found
-            and the updated rx_buf. """
+            and the updated rx_buf.
+            :param cmd_repeats: The number of times to repeat the uplink command characters in a single uplink packet
+            :param repeats: The number of repeats of the whole sequence to perform
+            :param tx_response_timeout_s: the time to spend searching for a response before repeating"""
         if station_config.tx_disabled:
+            logging.error("Transmission is manually DISABLED!")
             return False, ""
 
         rx_buf = ""
         num_repeats = 0
         while num_repeats < repeats:
             oldtime = time.time()
-            ser.write(cmd)
+            ser.write(cmd*cmd_repeats)
             ser.flush()
-            while (time.time() - oldtime) < TX_RESPONSE_TIMEOUT_S:
-                logging.debug("searching for response...")
+            while (time.time() - oldtime) < tx_response_timeout_s:
+                logging.debug("searching for response (%d/%d)..." % (num_repeats, repeats))
                 inwaiting = ser.in_waiting
                 if inwaiting > 0:
                     rx_buf += ser.read(size=inwaiting)
@@ -61,7 +67,6 @@ class Uplink:
                 # search for expected response in RX buffer
                 index = rx_buf.find(response)
                 if index != -1:
-                    fullResponse = ""
                     if index + config.RESPONSE_LEN < len(rx_buf):
                         fullResponse = rx_buf[index:index+config.RESPONSE_LEN]
                     else:
@@ -72,7 +77,7 @@ class Uplink:
                         ":".join("{:02x}".format(ord(c)) for c in fullResponse)))
                     return True, rx_buf
 
-                time.sleep(.1)
+                time.sleep(.05)
             num_repeats += 1
 
         return False, rx_buf

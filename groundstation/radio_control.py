@@ -43,7 +43,7 @@ def enterCommandMode(ser, dealer=False, retries=DEFAULT_RETRIES, retry_delay_s=D
     Returns whether dealer_access mode was successful entered if selected """
     logging.debug("Setting radio to command mode")
     time.sleep(0.1)
-    _, rx_buf1, _ = sendConfigCommand(ser, "+++", "", retries=0)
+    _, rx_buf1, _ = sendConfigCommand(ser, "+++", None, response_size=0, retries=0)
     time.sleep(0.1)
     if dealer:
         okay, rx_buf2, response = sendConfigCommand(ser, set_dealer_mode_buf, b'\xc4',
@@ -74,19 +74,20 @@ def sendConfigCommand(ser, buf, response_cmd, response_size=1,
         ser.write(buf)
         ser.flush()
         oldtime = time.time()
-        while (time.time() - oldtime) < 2:
-            if ser.in_waiting > 0:
-                data = ser.read(size=ser.in_waiting)
-                rx_buf += data
+        if response_cmd is not None and response_cmd != "":
+            while (time.time() - oldtime) < 2:
+                if ser.in_waiting > 0:
+                    data = ser.read(size=ser.in_waiting)
+                    rx_buf += data
 
-                # scale whole buffer for complete response
-                okay, response = checkCommandResponse(rx_buf, response_cmd, response_size)
-                logging.debug("got radio command response (%s; %s): %s" % \
-                        (okay, binascii.hexlify(response), binascii.hexlify(data)))
-                if okay or response_cmd == "":
-                    return True, rx_buf, response
+                    # scan whole buffer for complete response
+                    okay, response = checkCommandResponse(rx_buf, response_cmd, response_size)
+                    logging.debug("got radio command response (%s; %s): %s" % \
+                            (okay, binascii.hexlify(response), binascii.hexlify(data)))
+                    if okay or response_cmd == "":
+                        return True, rx_buf, response
 
-            time.sleep(0.25)
+                time.sleep(0.05)
 
         retry += 1
         if retry < retries:
