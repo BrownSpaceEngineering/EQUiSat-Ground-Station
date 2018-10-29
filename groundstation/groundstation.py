@@ -90,7 +90,8 @@ class EQUiStation:
 
         # setup email
         if hasattr(station, "station_gmail_user") and hasattr(station, "station_gmail_pass") \
-                and hasattr(station, "packet_email_recipients") and len(station.packet_email_recipients) > 0:
+                and ((hasattr(station, "packet_email_recipients") and len(station.packet_email_recipients) > 0) \
+                or (hasattr(station, "uplink_email_recipients") and len(station.uplink_email_recipients) > 0)):
             self.yag = yagmail.SMTP(station.station_gmail_user, station.station_gmail_pass)
         else:
             self.yag = None
@@ -259,7 +260,21 @@ class EQUiStation:
                 self.last_uplink_time = datetime.datetime.utcnow()
 
                 logging.info("uplink command %s" % ("SUCCESS" if got_response else "failed"))
-                logging.debug("full uplink response: %s" % rx)
+                logging.debug("raw uplink response: %s" % rx)
+                logging.debug("hex uplink response: %s" % hexlify(rx))
+
+                if not command["immediate"] and got_response and self.yag is not None:
+                    try:
+                        logging.info("sending email")
+                        logging.debug("sending email message with uplink response")
+                        contents = "Sent command: %s\nRaw Uplink Response: %s\nHex Uplink Response: %s" \
+                            % (command["cmd"], rx, hexlify(rx))
+                        self.yag.send(to=station.uplink_email_recipients,
+                                      subject="EQUiSat Station '%s' Uplinked Successfully!" % station.station_name,
+                                      contents=contents)
+                        logging.info("email sent")
+                    except Exception as ex:
+                        logging.error("Error sending email: %s" % ex)
 
                 if got_response:
                     # remove command and immediate setting on success
