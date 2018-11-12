@@ -6,12 +6,6 @@
 import sys, time, binascii, csv, logging, serial, struct
 import config, station_config
 
-# how many times to repeat the command in a single transmission
-DEF_CMD_REPEATS = 5
-# try transmissions for 12*0.3s = 3.6s = plenty of time to hit the window after hearing a packet
-DEF_TX_REPEATS = 12 # how many repeat attempts of transmissions
-DEF_TX_RESPONSE_TIMEOUT_S = 0.3 # how long to wait for responses
-
 DEF_DUTY_CYCLE = 0.5 # transmit for 50% of the time
 DEF_TRANS_WINDOW = 0.5 # transmit for .5 seconds
 DEF_LISTEN_WINDOW = 1.0 # listen for 1 second
