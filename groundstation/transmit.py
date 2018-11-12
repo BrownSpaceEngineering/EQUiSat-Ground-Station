@@ -12,6 +12,13 @@ DEF_CMD_REPEATS = 5
 DEF_TX_REPEATS = 12 # how many repeat attempts of transmissions
 DEF_TX_RESPONSE_TIMEOUT_S = 0.3 # how long to wait for responses
 
+DEF_DUTY_CYCLE = 0.5 # transmit for 50% of the time
+DEF_TRANS_WINDOW = 0.5 # transmit for .5 seconds
+DEF_LISTEN_WINDOW = 1.0 # listen for 1 second
+DEF_WAIT_INTERVAL = .25 # wait .25 seconds between calls of ser.write()
+SECONDS_PER_BYTE = .005
+# number of commands is calculated with DEF_DUTY_CYCLE * (DEF_WAIT_INTERVAL / SECONDS_PER_BYTE)
+
 class Uplink:
     def __init__(self, ser, uplink_file=config.UPLINK_COMMANDS_FILE, uplink_responses=config.UPLINK_RESPONSES):
         self.cmds = Uplink.loadUplinkCommands(uplink_file)
@@ -34,57 +41,67 @@ class Uplink:
         """ Returns whether the command is a valid uplink command """
         return self.responses.has_key(cmd_name) and self.cmds.has_key(cmd_name)
 
-    def send(self, cmd_name, cmd_repeats=DEF_CMD_REPEATS, repeats=DEF_TX_REPEATS, tx_response_timeout_s=DEF_TX_RESPONSE_TIMEOUT_S):
+    def send(self, cmd_name, duty_cycle=DEF_DUTY_CYCLE, transmit_time=DEF_TRANS_WINDOW, listen_time=DEF_LISTEN_WINDOW):
         """ Tries the given command (by name) and returns whether successful. Throws error on invalid command. """
         if not self.is_valid(cmd_name):
             raise ValueError("Invalid uplink command name: %s" % cmd_name)
         cmd = self.cmds[cmd_name]
         response = self.responses[cmd_name]
-        return self.sendUplink(cmd, response, self.ser, cmd_repeats=cmd_repeats, repeats=repeats, tx_response_timeout_s=tx_response_timeout_s)
+        return self.sendUplink(cmd, response, self.ser, duty_cycle=duty_cycle, transmit_time=transmit_time, listen_time=listen_time)
 
     @staticmethod
-    def sendUplink(cmd, response, ser, cmd_repeats=DEF_CMD_REPEATS, repeats=DEF_TX_REPEATS, tx_response_timeout_s=DEF_TX_RESPONSE_TIMEOUT_S):
+    def sendUplink(cmd, response, ser, duty_cycle=DEF_DUTY_CYCLE, transmit_time=DEF_TRANS_WINDOW, listen_time=DEF_LISTEN_WINDOW):
         """ Attempts to send uplink command and waits for a time to receive
             the expected response. Returns whether the response was found
             and the updated rx_buf.
             :param cmd_repeats: The number of times to repeat the uplink command characters in a single uplink packet
             :param repeats: The number of repeats of the whole sequence to perform
-            :param tx_response_timeout_s: the time to spend searching for a response before repeating"""
+            :param tx_response_timeout_s: the time to spend searching for a response before repeating """ # TODO: update header comment
         if station_config.tx_disabled:
             logging.error("Transmission is manually DISABLED!")
             return False, ""
-
-        rx_buf = ""
-        num_repeats = 0
-        while num_repeats < repeats:
-            oldtime = time.time()
-            ser.write(cmd*cmd_repeats)
+        wait_window = DEF_WAIT_INTERVAL # constant for now to ensure enough time for current to ramp up
+        # enough commands so that transmission occurs for duty_cycle proportion of wait_window
+        cmd_repeats = int(duty_cycle * (wait_window / (SECONDS_PER_BYTE)))
+        oldtime = time.time()
+        while (time.time() - oldtime) < transmit_time:
+            ser.write(cmd * cmd_repeats)
             ser.flush()
-            while (time.time() - oldtime) < tx_response_timeout_s:
-                logging.debug("searching for response (%d/%d)..." % (num_repeats, repeats))
-                inwaiting = ser.in_waiting
-                if inwaiting > 0:
-                    rx_buf += ser.read(size=inwaiting)
+            got_response, rx_buf = Uplink.listenForUplink(ser, response, wait_window)
+            if (got_response):
+                return got_response, rx_buf
 
-                # search for expected response in RX buffer
-                index = rx_buf.find(response)
-                if index != -1:
-                    # take only the response out of the rx buffer,
-                    # or everything if it's less than the max length
-                    if index + config.RESPONSE_LEN < len(rx_buf):
-                        fullResponse = rx_buf[index:index+config.RESPONSE_LEN]
-                    else:
-                        fullResponse = rx_buf[index:]
+        return Uplink.listenForUplink(ser, response, listen_time)
 
-                    # https://stackoverflow.com/a/12214880
-                    logging.info("got uplink command response: %s (%s)" % (fullResponse,
-                        ":".join("{:02x}".format(ord(c)) for c in fullResponse)))
-                    return True, rx_buf
+    @staticmethod
+    def listenForUplink(ser, response, listen_time):
+        """ listen for listen_time (seconds, multiple of .05s) seconds for the
+        specified uplink response from satellite on serial ser """
+        rx_buf = ""
+        oldtime = time.time()
+        while (time.time() - oldtime) < listen_time:
+            logging.debug("searching for response ...")
+            inwaiting = ser.in_waiting
+            if inwaiting > 0:
+                rx_buf += ser.read(size=inwaiting)
 
-                time.sleep(.05)
-            num_repeats += 1
+            # search for expected response in RX buffer
+            index = rx_buf.find(response)
+            if index != -1:
+                # take only the response out of the rx buffer,
+                # or everything if it's less than the max length
+                if index + config.RESPONSE_LEN < len(rx_buf):
+                    fullResponse = rx_buf[index:index+config.RESPONSE_LEN]
+                else:
+                    fullResponse = rx_buf[index:]
 
+                # https://stackoverflow.com/a/12214880
+                logging.info("got uplink command response: %s (%s)" % (fullResponse,
+                    ":".join("{:02x}".format(ord(c)) for c in fullResponse)))
+                return True, rx_buf
+            time.sleep(.05) # TODO, how long to sleep
         return False, rx_buf
+
 
     @staticmethod
     def uplinkTests(cmds, ser):
