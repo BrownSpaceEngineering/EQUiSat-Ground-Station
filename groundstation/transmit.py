@@ -56,7 +56,7 @@ class Uplink:
             return False, ""
         wait_window = DEF_WAIT_INTERVAL # constant for now to ensure enough time for current to ramp up
         # enough commands so that transmission occurs for duty_cycle proportion of wait_window
-        cmd_repeats = int(duty_cycle * (wait_window / (SECONDS_PER_BYTE)))
+        cmd_repeats = int(duty_cycle * (wait_window / (len(cmd) * SECONDS_PER_BYTE)))
         oldtime = time.time()
         while (time.time() - oldtime) < transmit_time:
             ser.write(cmd * cmd_repeats)
