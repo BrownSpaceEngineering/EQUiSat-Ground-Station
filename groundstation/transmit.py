@@ -7,11 +7,16 @@ import sys, time, binascii, csv, logging, serial, struct
 import config, station_config
 
 DEF_DUTY_CYCLE = 0.5 # transmit for 50% of the time
-DEF_TRANS_WINDOW = 0.5 # transmit for .5 seconds
-DEF_LISTEN_WINDOW = 1.0 # listen for 1 second
-DEF_WAIT_INTERVAL = .25 # wait .25 seconds between calls of ser.write()
+DEF_TRANS_WINDOW = 0.5 # the length of the window to transmit in
+DEF_TX_PER_WINDOW = 2 # number of times to call ser.write() during transmit window; consider current ramp-up time btwn
+DEF_LISTEN_WINDOW = 0.7 # how long to listen for after transmit window
 SECONDS_PER_BYTE = .005
-# number of commands is calculated with DEF_DUTY_CYCLE * (DEF_WAIT_INTERVAL / SECONDS_PER_BYTE)
+# number of commands sent per ser.write() is calculated with DEF_DUTY_CYCLE * (DEF_WAIT_INTERVAL / (len(command) * SECONDS_PER_BYTE))
+
+# the goal with all of the above is to make it impossible for us not to be transmitting during an arbitrary 1s window,
+# but also make it impossible for our earliest or latest transmission to be clobbered by another transmission
+# (i.e. we must not transmit in a period from 0.7s after our first TX to 0.7s after our last TX)
+
 
 class Uplink:
     def __init__(self, ser, uplink_file=config.UPLINK_COMMANDS_FILE, uplink_responses=config.UPLINK_RESPONSES):
@@ -35,46 +40,54 @@ class Uplink:
         """ Returns whether the command is a valid uplink command """
         return self.responses.has_key(cmd_name) and self.cmds.has_key(cmd_name)
 
-    def send(self, cmd_name, duty_cycle=DEF_DUTY_CYCLE, transmit_time=DEF_TRANS_WINDOW, listen_time=DEF_LISTEN_WINDOW):
+    def send(self, cmd_name, duty_cycle=DEF_DUTY_CYCLE, transmit_time=DEF_TRANS_WINDOW,
+             tx_per_window=DEF_TX_PER_WINDOW, listen_time=DEF_LISTEN_WINDOW):
         """ Tries the given command (by name) and returns whether successful. Throws error on invalid command. """
         if not self.is_valid(cmd_name):
             raise ValueError("Invalid uplink command name: %s" % cmd_name)
         cmd = self.cmds[cmd_name]
         response = self.responses[cmd_name]
-        return self.sendUplink(cmd, response, self.ser, duty_cycle=duty_cycle, transmit_time=transmit_time, listen_time=listen_time)
+        return self.sendUplink(cmd, response, self.ser, duty_cycle=duty_cycle, transmit_time=transmit_time,
+                               tx_per_window=tx_per_window, listen_time=listen_time)
 
     @staticmethod
-    def sendUplink(cmd, response, ser, duty_cycle=DEF_DUTY_CYCLE, transmit_time=DEF_TRANS_WINDOW, listen_time=DEF_LISTEN_WINDOW):
+    def sendUplink(cmd, response, ser, duty_cycle=DEF_DUTY_CYCLE, transmit_time=DEF_TRANS_WINDOW,
+                   tx_per_window=DEF_TX_PER_WINDOW, listen_time=DEF_LISTEN_WINDOW):
         """ Attempts to send uplink command and waits for a time to receive
             the expected response. Returns whether the response was found
             and the updated rx_buf.
-            :param cmd_repeats: The number of times to repeat the uplink command characters in a single uplink packet
-            :param repeats: The number of repeats of the whole sequence to perform
-            :param tx_response_timeout_s: the time to spend searching for a response before repeating """ # TODO: update header comment
+            See default constants for comments. """
         if station_config.tx_disabled:
             logging.error("Transmission is manually DISABLED!")
             return False, ""
-        wait_window = DEF_WAIT_INTERVAL # constant for now to ensure enough time for current to ramp up
-        # enough commands so that transmission occurs for duty_cycle proportion of wait_window
-        cmd_repeats = int(duty_cycle * (wait_window / (len(cmd) * SECONDS_PER_BYTE)))
+
+        rx_buf = ""
+
+        single_tx_window = float(transmit_time) / tx_per_window
+        # enough commands so that transmission occurs for duty_cycle proportion
+        # of each of the tx_per_window windows
+        cmd_repeats = int(duty_cycle * (single_tx_window / (len(cmd) * SECONDS_PER_BYTE)))
         oldtime = time.time()
         while (time.time() - oldtime) < transmit_time:
             ser.write(cmd * cmd_repeats)
             ser.flush()
-            got_response, rx_buf = Uplink.listenForUplink(ser, response, wait_window)
-            if (got_response):
+            got_response, rx_buf_tmp = Uplink.listenForUplink(ser, response, (1-duty_cycle)*single_tx_window)
+            rx_buf += rx_buf_tmp
+            if got_response:
                 return got_response, rx_buf
 
-        return Uplink.listenForUplink(ser, response, listen_time)
+        got_response, rx_buf_tmp = Uplink.listenForUplink(ser, response, listen_time)
+        rx_buf += rx_buf_tmp
+        return got_response, rx_buf
 
     @staticmethod
     def listenForUplink(ser, response, listen_time):
         """ listen for listen_time (seconds, multiple of .05s) seconds for the
         specified uplink response from satellite on serial ser """
         rx_buf = ""
+        logging.debug("listening for uplink response...")
         oldtime = time.time()
         while (time.time() - oldtime) < listen_time:
-            logging.debug("searching for response ...")
             inwaiting = ser.in_waiting
             if inwaiting > 0:
                 rx_buf += ser.read(size=inwaiting)
@@ -91,9 +104,9 @@ class Uplink:
 
                 # https://stackoverflow.com/a/12214880
                 logging.info("got uplink command response: %s (%s)" % (fullResponse,
-                    ":".join("{:02x}".format(ord(c)) for c in fullResponse)))
+                                                                       ":".join("{:02x}".format(ord(c)) for c in fullResponse)))
                 return True, rx_buf
-            time.sleep(.05) # TODO, how long to sleep
+            time.sleep(.01) # TODO, how long to sleep
         return False, rx_buf
 
 
