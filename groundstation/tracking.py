@@ -18,17 +18,22 @@ TLE_GET_ROUTE = "http://tracking.brownspace.org/api/tle" #"https://www.celestrak
 class SatTracker:
     SPEED_OF_LIGHT_MPS = 299792000
 
-    def __init__(self, norad_id, tle_fname=DEFAULT_TLE_FNAME):
+    def __init__(self, norad_id, longitude=station.station_lon, latitude=station.station_lat,
+                 altitude=station.station_alt, tle_fname=DEFAULT_TLE_FNAME, tle_route=TLE_GET_ROUTE):
         self.norad_id = str(norad_id)
+        self.longitude = longitude
+        self.latitude = latitude
+        self.altitude = altitude
         self.tle_fname = tle_fname
+        self.tle_route = tle_route
         self.tle = None
         self.load_tle() # populates self.tle
 
     def get_observer(self):
         obs = ephem.Observer()
-        obs.lon = str(station.station_lon)
-        obs.lat = str(station.station_lat)
-        obs.elevation = station.station_alt
+        obs.lon = str(self.longitude)
+        obs.lat = str(self.latitude)
+        obs.elevation = self.altitude
         return obs
 
     def get_next_pass(self, start=None):
@@ -220,8 +225,13 @@ class SatTracker:
 
         return factors
 
-    def get_doppler_factor(self, dtime, obs=None, tle=None):
+    def get_doppler_factor(self, dtime=None, obs=None, tle=None):
+        """ Returns the factor, which, when multiplied by a given frequency,
+        returns the amount that frequency is doppler shifted by according
+        to the motion of the satellite. """
         # use provided objects if given, otherwise get new ones
+        if dtime is None:
+            dtime = datetime.datetime.now()
         if obs is None:
             obs = self.get_observer()
         if tle is None:
@@ -231,6 +241,21 @@ class SatTracker:
         tle.compute(obs)
         # negative because negative (inbound) range rate means an increase in frequency
         return -tle.range_velocity / self.SPEED_OF_LIGHT_MPS
+
+    def get_az_el(self, dtime=None, obs=None, tle=None):
+        """ Returns a tuple of the current azimuth and elevation relative to the given
+        or current observer, in degrees. """
+        # use provided objects if given, otherwise get new ones
+        if dtime is None:
+            dtime = datetime.datetime.now()
+        if obs is None:
+            obs = self.get_observer()
+        if tle is None:
+            tle = self.tle.copy()  # copy to not modify
+
+        obs.date = self.datetime_to_ephem(dtime)
+        tle.compute(obs)
+        return (180.0/math.pi)*float(tle.az), (180.0/math.pi)*float(tle.alt)
 
     @staticmethod
     def pass_tostr(pass_data, sig_freq_hz=1000):
@@ -283,7 +308,7 @@ class SatTracker:
         """ Update the TLE data from the remote Celestrack server. Returns if successful """
         # watch for any connection failure
         try:
-            req = requests.get(TLE_GET_ROUTE)
+            req = requests.get(self.tle_route)
             if req.status_code != requests.codes.ok:
                 logging.error("tracking: error code getting TLEs: %d" % req.status_code)
                 return False
@@ -337,7 +362,8 @@ class SatTracker:
 if __name__ == "__main__":
     import config
     st = SatTracker(config.SAT_CATALOG_NUMBER)
-    #st.update_tle()
+    print(st.get_az_el())
+    # st.update_tle()
     print("next passes:")
     passes = st.get_next_passes(num=10, start=datetime.datetime.utcnow()) # + datetime.timedelta(hours=1))
     for pas in passes:

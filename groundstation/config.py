@@ -1,7 +1,7 @@
 # Global config settings for groundstation
 import logging
 
-SERIAL_PORT = "/dev/ttyAMA0"
+SERIAL_PORT = "/dev/ttyUSB0"
 SERIAL_BAUD = 38400
 SAT_CATALOG_NUMBER = 43552 # ISS: 25544 # NORAD (Space Command) number
 
@@ -24,10 +24,10 @@ UPLINK_RESPONSES = {
 # testing config
 LOGGING_LEVEL = logging.DEBUG
 
-USE_TEST_FILE =             False
-GENERATE_FAKE_PASSES =      False
+USE_TEST_FILE =             True
+GENERATE_FAKE_PASSES =      True
 RUN_TEST_UPLINKS =          False
-PUBLISH_PACKETS =           True
+PUBLISH_PACKETS =           False
 UNHEXLIFY_TEST_FILE = 		False
 
 TEST_INFILE = "../Test Dumps/test_packet_logfile.txt"

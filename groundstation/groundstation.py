@@ -775,6 +775,8 @@ class EQUiStation:
                          (self.tracker.pass_tostr(self.next_pass_data, self.RADIO_BASE_FREQ_HZ), self.get_doppler_corrections_str()))
             return True
 
+    #### Fake pass helpers ####
+
     @staticmethod
     def find_pass_with_elev(desired_elev, tracker, num_to_search=30):
         """ Selects the pass out of the upcoming real passes with the elevation closest to desired_elev"""
