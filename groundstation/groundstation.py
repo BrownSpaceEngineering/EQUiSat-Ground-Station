@@ -190,7 +190,7 @@ class EQUiStation:
                 # if we got a packet try and send any TX commands,
                 send_tx = got_data or self.sending_periodic_tx_cmd()
                 if send_tx:
-                    self.transmit(throttle=not got_data)
+                    self.transmit(throttle=not got_data, post_rx=got_data)
                     # look for (and extract/send) any packets in the buffer, trimming
                     # the buffer after finding any. (Only finds full packets)
                     # We do this here because we want to send TX commands ASAP after packet RX
@@ -237,7 +237,7 @@ class EQUiStation:
             return True
         return False
 
-    def transmit(self, throttle=True):
+    def transmit(self, throttle=True, post_rx=False):
         """ Checks if there are any uplink commands on the queue and transmits
             them/waits for response if so.
             Returns whether anything was transmitted and whether it was successful. """
@@ -254,7 +254,17 @@ class EQUiStation:
             if should_send:
                 logging.info("SENDING UPLINK COMMAND: %s" % command)
 
-                got_response, rx = self.transmitter.send(command["cmd"])
+                # if we just got RX, repeat enough to hit the window in the worst case
+                # (see transmit.py & testing for duration of single TX; it's approx 1.3s per)
+                repeats = 3 if post_rx else 1
+
+                rx = ""
+                for i in range(repeats):
+                    got_response, rx_tmp = self.transmitter.send(command["cmd"])
+                    rx += rx_tmp
+                    if got_response:
+                        break
+
                 self.update_rx_buf(hexlify(rx))
                 self.rx_since_pass_start += len(rx)
                 self.last_uplink_time = datetime.datetime.utcnow()
@@ -268,7 +278,7 @@ class EQUiStation:
                         logging.info("sending email")
                         logging.debug("sending email message with uplink response")
                         contents = "Sent command: %s\nRaw Uplink Response: %s\nHex Uplink Response: %s" \
-                            % (command["cmd"], rx, hexlify(rx))
+                                   % (command["cmd"], rx, hexlify(rx))
                         self.yag.send(to=station.uplink_email_recipients,
                                       subject="EQUiSat Station '%s' Uplinked Successfully!" % station.station_name,
                                       contents=contents)
