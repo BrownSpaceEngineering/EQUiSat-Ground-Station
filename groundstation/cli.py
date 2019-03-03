@@ -17,6 +17,9 @@ class GroundstationCLI(cmd.Cmd):
         """ Given an EQUiStation constructs an interactive terminal """
         self.station = station
 
+    def do_exit(self, line):
+        exit(0)
+    
     def do_debug(self, level):
         """ Sets level of debug messages to show"""
         level = level.lower()
@@ -151,10 +154,13 @@ def main():
         parser.print_help()
         exit(1)
 
-    try:
-        GroundstationCLI(station).cmdloop()
-    except KeyboardInterrupt:
-        return
+
+    # don't let the user quit except with cntrl-D
+    while True:
+        try:
+            GroundstationCLI(station).cmdloop()
+        except KeyboardInterrupt:
+            continue
 
 if __name__ == "__main__":
     main()
