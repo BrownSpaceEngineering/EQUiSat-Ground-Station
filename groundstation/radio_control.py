@@ -247,8 +247,24 @@ def setCurrentPower(ser, power_w, retries=DEFAULT_RETRIES):
     ctrl = powerToControlByte(power_w)
     if ctrl is None:
         return False, "", None
-    command = buildCommand(command_code=b'\x71', args=ctrl)
+    command = buildCommand(b'\x71', args=ctrl)
     rets = sendConfigCommand(ser, command, b'\xf1', retries=retries)
+    return validateConfigResponse(b'\x00', rets)
+
+def getPowerLimit(ser, retries=DEFAULT_RETRIES):
+    command = buildCommand(b'\x70\x03')
+    success, rx_buf, response = sendConfigCommand(ser, command, b'\xf0', response_size=1, retries=retries)
+    if success:
+        return True, rx_buf, controlByteToPower(response)
+    else:
+        return False, rx_buf, None
+
+def setPowerLimit(ser, power_w, retries=DEFAULT_RETRIES):
+    ctrl = powerToControlByte(power_w)
+    if ctrl is None:
+        return False, "", None
+    command = buildCommand(b'\x70\x02', args=ctrl)
+    rets = sendConfigCommand(ser, command, b'\xf0', retries=retries)
     return validateConfigResponse(b'\x00', rets)
 
 def powerToControlByte(power):
