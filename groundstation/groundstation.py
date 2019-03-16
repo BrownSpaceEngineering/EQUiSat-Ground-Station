@@ -237,7 +237,7 @@ class EQUiStation:
             return True
         return False
 
-    def transmit(self, throttle=True, post_rx=False):
+    def transmit(self, throttle=True, post_rx=False, was_low_power=False):
         """ Checks if there are any uplink commands on the queue and transmits
             them/waits for response if so.
             Returns whether anything was transmitted and whether it was successful. """
@@ -254,7 +254,19 @@ class EQUiStation:
             if should_send:
                 logging.info("SENDING UPLINK COMMAND: %s" % command)
 
-                got_response, rx = self.transmitter.send(command["cmd"], post_packet=post_rx, low_power=True)
+                low_power = False # default
+                if post_rx:
+                    mode = command["post_rx_mode"]
+                    if mode == "auto":
+                        low_power = False # TODO: for now the idle mode covers both, but could detect and do fancy timing
+                    elif mode == "low_power":
+                        low_power = True
+                    elif mode == "idle":
+                        low_power = False
+                    else:
+                        logging.error("uplink: invalid post_rx_mode '%s' setting" % mode)
+
+                got_response, rx = self.transmitter.send(command["cmd"], post_packet=post_rx, low_power=low_power)
                 self.update_rx_buf(hexlify(rx))
                 self.rx_since_pass_start += len(rx)
                 self.last_uplink_time = datetime.datetime.utcnow()
@@ -867,15 +879,22 @@ class EQUiStation:
     def get_tx_cmd_queue(self):
         return self.tx_cmd_queue
 
-    def send_tx_cmd(self, cmd_name, immediate=False, immediate_period_s=3):
+    def send_tx_cmd(self, cmd_name, immediate=False, immediate_period_s=3, post_rx_mode="auto"):
         """ Queues the given transmit command (name) to
         be transmitted when best, or sets it to transmit immediately and
         continually if immediate is set.
         Returns whether the uplink cmd was valid. """
         if not self.transmitter.is_valid(cmd_name):
             return False
+        if post_rx_mode not in ["auto", "low_power", "idle"]:
+            return False
 
-        cmd = {"cmd": cmd_name, "immediate": immediate}
+        cmd = {
+            "cmd": cmd_name,
+            "immediate": immediate,
+            "post_rx_mode": post_rx_mode
+        }
+
         if immediate:
             cmd["period"] = immediate_period_s
         self.tx_cmd_queue.insert(0, cmd)

@@ -70,15 +70,16 @@ class GroundstationCLI(cmd.Cmd):
     def do_tx(self, line):
         """ Queues the given uplink command or sends periodically with the given period if set to """
         args = line.split(" ")
-        if not (1 <= len(args) <= 3):
-            print("invalid arguments, need <cmd> <immediate setting> <period(s)>")
+        if not (1 <= len(args) <= 4):
+            print("invalid arguments, need <cmd> <immediate setting: true|false> <period(s)> <post rx mode: auto|low_power|idle>")
         else:
             cmd = args[0]
             immediate = args[1] if len(args) >= 2 else False
             immediateSet = immediate == "true" or immediate == "now" or immediate == "on"
-            period = int(args[2]) if len(args) >= 3 else 3
+            period = int(args[2]) if len(args) >= 3 else 0
+            post_rx_mode = args[3] if len(args) >= 4 else "auto"
 
-            success = self.station.send_tx_cmd(cmd, immediate=immediateSet, immediate_period_s=period)
+            success = self.station.send_tx_cmd(cmd, immediate=immediateSet, immediate_period_s=period, post_rx_mode=post_rx_mode)
             if not success:
                 print("invalid uplink command; available:")
                 for cmd in config.UPLINK_RESPONSES.keys():

@@ -7,14 +7,14 @@ import sys, time, binascii, csv, logging, serial, struct
 import config, station_config
 
 CMD_LENGTH = 6
-SECONDS_PER_BYTE = .005
+def tx_time(byts): return byts/1080.0 + 0.012
 
 #### Continuous uplink constants
 DEF_DUTY_CYCLE = 0.5 # transmit for 50% of the time
 DEF_TRANS_WINDOW = 0.5 # the length of the window to transmit in
 DEF_TX_PER_WINDOW = 2 # number of times to call ser.write() during transmit window; consider current ramp-up time btwn
 DEF_LISTEN_WINDOW = 0.7 # how long to listen for after transmit window
-# number of commands sent per ser.write() is calculated with DEF_DUTY_CYCLE * (DEF_WAIT_INTERVAL / (len(command) * SECONDS_PER_BYTE))
+# number of commands sent per ser.write() is calculated with DEF_DUTY_CYCLE * (DEF_WAIT_INTERVAL / (tx_time(len(command)))
 
 # the goal with all of the above is to make it impossible for us not to be transmitting during an arbitrary 1s window,
 # but also make it impossible for our earliest or latest transmission to be clobbered by another transmission
@@ -22,7 +22,9 @@ DEF_LISTEN_WINDOW = 0.7 # how long to listen for after transmit window
 
 #### Post-packet (PP) specific constants
 DEF_PP_DUTY_CYCLE = 0.5
-DEF_PP_INDIV_TX_TIME = 8 * CMD_LENGTH * SECONDS_PER_BYTE
+# sum of tx and rx time for each sub transmit window, ratio determined by duty cycle
+# must be > duty cycle * 0.04 to be able to tx one command
+DEF_PP_INDIV_TX_PERIOD = 0.16
 
 class Uplink:
     def __init__(self, ser, uplink_file=config.UPLINK_COMMANDS_FILE, uplink_responses=config.UPLINK_RESPONSES):
@@ -46,11 +48,15 @@ class Uplink:
         """ Returns whether the command is a valid uplink command """
         return self.responses.has_key(cmd_name) and self.cmds.has_key(cmd_name)
 
-    def send(self, cmd_name, post_packet=False, low_power=False, duty_cycle=DEF_DUTY_CYCLE, transmit_time=DEF_TRANS_WINDOW,
+    def send(self, cmd_name, post_packet=False, low_power=False, duty_cycle=DEF_PP_DUTY_CYCLE, transmit_time=DEF_TRANS_WINDOW,
              tx_per_window=DEF_TX_PER_WINDOW, listen_time=DEF_LISTEN_WINDOW):
         """ Tries the given command (by name) and returns whether successful. Throws error on invalid command. """
         if not self.is_valid(cmd_name):
             raise ValueError("Invalid uplink command name: %s" % cmd_name)
+        if station_config.tx_disabled:
+            logging.error("Transmission is manually DISABLED!")
+            return False, ""
+
         cmd = self.cmds[cmd_name]
         response = self.responses[cmd_name]
         if post_packet:
@@ -68,20 +74,17 @@ class Uplink:
             the expected response. Returns whether the response was found
             and the updated rx_buf.
             See default constants for comments. """
-        if station_config.tx_disabled:
-            logging.error("Transmission is manually DISABLED!")
-            return False, ""
-
         rx_buf = ""
 
         single_tx_window = float(transmit_time) / tx_per_window
         # enough commands so that transmission occurs for duty_cycle proportion
         # of each of the tx_per_window windows
-        cmd_repeats = int(duty_cycle * (single_tx_window / (len(cmd) * SECONDS_PER_BYTE)))
+        cmd_repeats = int(duty_cycle * (single_tx_window / (tx_time(len(cmd)))))
         oldtime = time.time()
-        while (time.time() - oldtime) < transmit_time:
+        while (time.time() - oldtime) < transmit_time: # TODO: don't do this with big delays inside (results in .1s over end)
             ser.write(cmd * cmd_repeats)
             ser.flush()
+            # TODO: we should wait for the duration of the TX here to be correct
             got_response, rx_buf_tmp = Uplink.listenForUplink(ser, response, (1-duty_cycle)*single_tx_window)
             rx_buf += rx_buf_tmp
             if got_response:
@@ -94,43 +97,59 @@ class Uplink:
     #### Post packet uplink
 
     @staticmethod
-    def sendPostPacketUplink(cmd, response, ser, low_power=False, indiv_tx_time=DEF_PP_INDIV_TX_TIME, duty_cycle=DEF_DUTY_CYCLE):
+    def sendPostPacketUplink(cmd, response, ser, low_power=False,  # idle mode covers both well
+                             indiv_tx_period=DEF_PP_INDIV_TX_PERIOD, duty_cycle=DEF_PP_DUTY_CYCLE):
+        rx = ""
         if low_power:
-            # delay to enter rx window
-            rx = ""
-            time.sleep(0.9) # just under time to window
-            for i in range(4):
-                success, rx2 = Uplink.safeUplinkReceive(cmd, response, ser, 0.7, indiv_tx_time=indiv_tx_time, duty_cycle=duty_cycle)
-                rx += rx2
-                if success:
-                    return True, rx
-            return False, rx
-        else: # normal mode
-            return False, ""
+            logging.info("Transmitting post-packet uplink pattern (low power mode)")
+            # delay to enter low power rx window
+            # this is just under the 1s after the first tx that the sat starts listening (in low power)
+            time.sleep(0.9)
+            # repeat just in case low power choice is wrong (this won't help if we missed first tx)
+            count = 2
+
+        else: # idle mode
+            logging.info("Transmitting post-packet uplink pattern (idle mode)")
+            # delay to enter idle mode rx window
+            time.sleep(0.45)
+            # try to hit window even if we weren't triggered on first tx
+            count = 2
+
+        # transmit using tx/rx timing patterns that are guaranteed to hear the response
+        for i in range(count):
+            success, rx2 = Uplink.safeUplinkReceive(cmd, response, ser, 0.7, indiv_tx_period=indiv_tx_period,
+                                                    duty_cycle=duty_cycle)
+            rx += rx2
+            if success:
+                return True, rx
+        return False, rx
 
     @staticmethod
-    def safeUplinkReceive(cmd, response, ser, transmit_time, indiv_tx_time=DEF_PP_INDIV_TX_TIME, duty_cycle=DEF_DUTY_CYCLE):
-        cmd_repeats = int(indiv_tx_time / (len(cmd) * SECONDS_PER_BYTE))
-        indiv_off_time = indiv_tx_time # TODO: hard coded to 50% duty cycle
+    def safeUplinkReceive(cmd, response, ser, transmit_time, indiv_tx_period=DEF_PP_INDIV_TX_PERIOD, duty_cycle=DEF_PP_DUTY_CYCLE):
+        cmd_repeats = int(duty_cycle * indiv_tx_period / (tx_time(len(cmd))))
+        num_txs = int(transmit_time / float(indiv_tx_period))
         rx_buf = ""
-        assert transmit_time <= 0.7 # s; to ensure
+        assert transmit_time <= 0.7 # s
 
         # transmit for period of time
-        tx_start = time.time()
-        while (time.time() - tx_start) < transmit_time:
+        for i in range(num_txs):
             ser.write(cmd * cmd_repeats)
             ser.flush()
+            time.sleep(indiv_tx_period) # tx and rx time
 
-            time.sleep(indiv_off_time)
-            if ser.in_waiting > 0:
-                rx_buf += ser.read(size=ser.in_waiting)
+            inwaiting = ser.in_waiting
+            if inwaiting > 0:
+                rx_buf += ser.read(size=inwaiting)
 
             if Uplink.checkForUplink(response, rx_buf):
-                logging.info("Note: received uplink response while transmitting")
+                logging.warning("received uplink response while transmitting")
                 return True, rx_buf
 
         # and wait long enough to guarantee we'll hear the response
-        receive_time = 1.2 - indiv_off_time
+        # (note we want to make sure we are listening from 0.7 after first tx
+        # to 1.2s after the last tx (satellite takes a min of 0.7 and max of 1.0s to respond)
+        # (note this includes short period of rx after the last tx_period)
+        receive_time = 1.2 + (0.7 - transmit_time)
         success, rx_buf2 = Uplink.listenForUplink(ser, response, receive_time)
         return success, rx_buf + rx_buf2
 
@@ -152,7 +171,7 @@ class Uplink:
             if Uplink.checkForUplink(response, rx_buf):
                 return True, rx_buf
 
-            time.sleep(.01) # TODO, how long to sleep
+            time.sleep(.01) # as fast as reasonable
         return False, rx_buf
 
     @staticmethod
