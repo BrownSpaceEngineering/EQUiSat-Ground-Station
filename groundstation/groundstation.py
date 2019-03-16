@@ -254,17 +254,7 @@ class EQUiStation:
             if should_send:
                 logging.info("SENDING UPLINK COMMAND: %s" % command)
 
-                # if we just got RX, repeat enough to hit the window in the worst case
-                # (see transmit.py & testing for duration of single TX; it's approx 1.3s per)
-                repeats = 3 if post_rx else 1
-
-                rx = ""
-                for i in range(repeats):
-                    got_response, rx_tmp = self.transmitter.send(command["cmd"])
-                    rx += rx_tmp
-                    if got_response:
-                        break
-
+                got_response, rx = self.transmitter.send(command["cmd"], post_packet=post_rx, low_power=True)
                 self.update_rx_buf(hexlify(rx))
                 self.rx_since_pass_start += len(rx)
                 self.last_uplink_time = datetime.datetime.utcnow()

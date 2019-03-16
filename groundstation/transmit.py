@@ -6,17 +6,23 @@
 import sys, time, binascii, csv, logging, serial, struct
 import config, station_config
 
+CMD_LENGTH = 6
+SECONDS_PER_BYTE = .005
+
+#### Continuous uplink constants
 DEF_DUTY_CYCLE = 0.5 # transmit for 50% of the time
 DEF_TRANS_WINDOW = 0.5 # the length of the window to transmit in
 DEF_TX_PER_WINDOW = 2 # number of times to call ser.write() during transmit window; consider current ramp-up time btwn
 DEF_LISTEN_WINDOW = 0.7 # how long to listen for after transmit window
-SECONDS_PER_BYTE = .005
 # number of commands sent per ser.write() is calculated with DEF_DUTY_CYCLE * (DEF_WAIT_INTERVAL / (len(command) * SECONDS_PER_BYTE))
 
 # the goal with all of the above is to make it impossible for us not to be transmitting during an arbitrary 1s window,
 # but also make it impossible for our earliest or latest transmission to be clobbered by another transmission
 # (i.e. we must not transmit in a period from 0.7s after our first TX to 0.7s after our last TX)
 
+#### Post-packet (PP) specific constants
+DEF_PP_DUTY_CYCLE = 0.5
+DEF_PP_INDIV_TX_TIME = 8 * CMD_LENGTH * SECONDS_PER_BYTE
 
 class Uplink:
     def __init__(self, ser, uplink_file=config.UPLINK_COMMANDS_FILE, uplink_responses=config.UPLINK_RESPONSES):
@@ -40,15 +46,20 @@ class Uplink:
         """ Returns whether the command is a valid uplink command """
         return self.responses.has_key(cmd_name) and self.cmds.has_key(cmd_name)
 
-    def send(self, cmd_name, duty_cycle=DEF_DUTY_CYCLE, transmit_time=DEF_TRANS_WINDOW,
+    def send(self, cmd_name, post_packet=False, low_power=False, duty_cycle=DEF_DUTY_CYCLE, transmit_time=DEF_TRANS_WINDOW,
              tx_per_window=DEF_TX_PER_WINDOW, listen_time=DEF_LISTEN_WINDOW):
         """ Tries the given command (by name) and returns whether successful. Throws error on invalid command. """
         if not self.is_valid(cmd_name):
             raise ValueError("Invalid uplink command name: %s" % cmd_name)
         cmd = self.cmds[cmd_name]
         response = self.responses[cmd_name]
-        return self.sendUplink(cmd, response, self.ser, duty_cycle=duty_cycle, transmit_time=transmit_time,
+        if post_packet:
+            return self.sendPostPacketUplink(cmd, response, self.ser, low_power=low_power, duty_cycle=duty_cycle)
+        else:
+            return self.sendUplink(cmd, response, self.ser, duty_cycle=duty_cycle, transmit_time=transmit_time,
                                tx_per_window=tx_per_window, listen_time=listen_time)
+
+    #### Continuous uplink
 
     @staticmethod
     def sendUplink(cmd, response, ser, duty_cycle=DEF_DUTY_CYCLE, transmit_time=DEF_TRANS_WINDOW,
@@ -80,6 +91,51 @@ class Uplink:
         rx_buf += rx_buf_tmp
         return got_response, rx_buf
 
+    #### Post packet uplink
+
+    @staticmethod
+    def sendPostPacketUplink(cmd, response, ser, low_power=False, indiv_tx_time=DEF_PP_INDIV_TX_TIME, duty_cycle=DEF_DUTY_CYCLE):
+        if low_power:
+            # delay to enter rx window
+            rx = ""
+            time.sleep(0.9) # just under time to window
+            for i in range(4):
+                success, rx2 = Uplink.safeUplinkReceive(cmd, response, ser, 0.7, indiv_tx_time=indiv_tx_time, duty_cycle=duty_cycle)
+                rx += rx2
+                if success:
+                    return True, rx
+            return False, rx
+        else: # normal mode
+            return False, ""
+
+    @staticmethod
+    def safeUplinkReceive(cmd, response, ser, transmit_time, indiv_tx_time=DEF_PP_INDIV_TX_TIME, duty_cycle=DEF_DUTY_CYCLE):
+        cmd_repeats = int(indiv_tx_time / (len(cmd) * SECONDS_PER_BYTE))
+        indiv_off_time = indiv_tx_time # TODO: hard coded to 50% duty cycle
+        rx_buf = ""
+        assert transmit_time <= 0.7 # s; to ensure
+
+        # transmit for period of time
+        tx_start = time.time()
+        while (time.time() - tx_start) < transmit_time:
+            ser.write(cmd * cmd_repeats)
+            ser.flush()
+
+            time.sleep(indiv_off_time)
+            if ser.in_waiting > 0:
+                rx_buf += ser.read(size=ser.in_waiting)
+
+            if Uplink.checkForUplink(response, rx_buf):
+                logging.info("Note: received uplink response while transmitting")
+                return True, rx_buf
+
+        # and wait long enough to guarantee we'll hear the response
+        receive_time = 1.2 - indiv_off_time
+        success, rx_buf2 = Uplink.listenForUplink(ser, response, receive_time)
+        return success, rx_buf + rx_buf2
+
+    #### Helpers
+
     @staticmethod
     def listenForUplink(ser, response, listen_time):
         """ listen for listen_time (seconds, multiple of .05s) seconds for the
@@ -93,22 +149,29 @@ class Uplink:
                 rx_buf += ser.read(size=inwaiting)
 
             # search for expected response in RX buffer
-            index = rx_buf.find(response)
-            if index != -1:
-                # take only the response out of the rx buffer,
-                # or everything if it's less than the max length
-                if index + config.RESPONSE_LEN < len(rx_buf):
-                    fullResponse = rx_buf[index:index+config.RESPONSE_LEN]
-                else:
-                    fullResponse = rx_buf[index:]
-
-                # https://stackoverflow.com/a/12214880
-                logging.info("got uplink command response: %s (%s)" % (fullResponse,
-                                                                       ":".join("{:02x}".format(ord(c)) for c in fullResponse)))
+            if Uplink.checkForUplink(response, rx_buf):
                 return True, rx_buf
+
             time.sleep(.01) # TODO, how long to sleep
         return False, rx_buf
 
+    @staticmethod
+    def checkForUplink(response, rx_buf):
+        index = rx_buf.find(response)
+        if index != -1:
+            # take only the response out of the rx buffer,
+            # or everything if it's less than the max length
+            if index + config.RESPONSE_LEN < len(rx_buf):
+                fullResponse = rx_buf[index:index + config.RESPONSE_LEN]
+            else:
+                fullResponse = rx_buf[index:]
+
+            # https://stackoverflow.com/a/12214880
+            logging.info("got uplink command response: %s (%s)" % (fullResponse,
+                                                                   ":".join(
+                                                                       "{:02x}".format(ord(c)) for c in fullResponse)))
+            return True
+        return False
 
     @staticmethod
     def uplinkTests(cmds, ser):
