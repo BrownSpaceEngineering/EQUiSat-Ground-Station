@@ -7,6 +7,7 @@ import sys, time, binascii, csv, logging, serial, struct
 import config, station_config
 
 CMD_LENGTH = 6
+XDL_TX_START_DELAY = 0.1
 def tx_time(byts): return byts/1080.0 + 0.012
 
 #### Continuous uplink constants
@@ -101,19 +102,19 @@ class Uplink:
                              indiv_tx_period=DEF_PP_INDIV_TX_PERIOD, duty_cycle=DEF_PP_DUTY_CYCLE):
         rx = ""
         if low_power:
-            logging.info("Transmitting post-packet uplink pattern (low power mode)")
             # delay to enter low power rx window
             # this is just under the 1s after the first tx that the sat starts listening (in low power)
-            time.sleep(0.9)
+            time.sleep(0.9 - XDL_TX_START_DELAY)
             # repeat just in case low power choice is wrong (this won't help if we missed first tx)
             count = 2
+            logging.info("Transmitting post-packet uplink pattern (low power mode)")
 
         else: # idle mode
-            logging.info("Transmitting post-packet uplink pattern (idle mode)")
             # delay to enter idle mode rx window
-            time.sleep(0.45)
+            time.sleep(0.45 - XDL_TX_START_DELAY)
             # try to hit window even if we weren't triggered on first tx
             count = 2
+            logging.info("Transmitting post-packet uplink pattern (idle mode)")
 
         # transmit using tx/rx timing patterns that are guaranteed to hear the response
         for i in range(count):

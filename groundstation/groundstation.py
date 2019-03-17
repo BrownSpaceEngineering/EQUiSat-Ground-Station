@@ -212,7 +212,7 @@ class EQUiStation:
                 # sleep to slow looping, but make it faster if we're sending TX commands so they can send faster
                 # after we get a packet (we most likely get the packet during this sleep and grab it later)
                 if len(self.tx_cmd_queue) > 0:
-                    time.sleep(0.05)
+                    time.sleep(0.025)
                 else:
                     time.sleep(0.5)
 
