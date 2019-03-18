@@ -651,8 +651,9 @@ class EQUiStation:
             freq_in = self.RADIO_BASE_FREQ_HZ + shift
             freq_out = self.RADIO_BASE_FREQ_HZ - shift
             logging.info("setting channels %d -> %d to %f -> %f" % (channel, channel+1, freq_in/1e6, freq_out/1e6))
-            in_okay, rx1 = radio_control.addChannel(self.ser, channel, freq_in, freq_in)
-            out_okay, rx2 = radio_control.addChannel(self.ser, channel+1, freq_out, freq_out)
+            # tx frequency has the opposite doppler shift of rx frequency because of relativity (we're going towards the sat)
+            in_okay, rx1 = radio_control.addChannel(self.ser, channel, freq_in, freq_out)
+            out_okay, rx2 = radio_control.addChannel(self.ser, channel+1, freq_out, freq_in)
             # update
             channel += 2
             mid_channels_okay = mid_channels_okay and in_okay and out_okay
