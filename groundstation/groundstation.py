@@ -60,6 +60,7 @@ class EQUiStation:
         self.rx_since_pass_start = 0
         self.received_packets = []
         self.tx_cmd_queue = []
+        self.rx_buf_uplink_search_start = 0 # where to start searching for uplinks in buffer; used to avoid double-triggers
 
         # doppler shift/tracking
         self.station_lat = station.station_lat
@@ -199,6 +200,9 @@ class EQUiStation:
                 # and then try to adjust the frequency for doppler effects
                 self.correct_for_doppler()
 
+                # scan buffer for any residual uplinks command responses or those from other stations
+                self.scan_for_uplink_responses()
+
                 # periodically perform random scans for packets in case we missed something
                 # (only if we're not transmitting now as it would have been done)
                 if not send_tx and self.next_packet_scan <= datetime.datetime.utcnow():
@@ -304,6 +308,21 @@ class EQUiStation:
             command = self.tx_cmd_queue[0]
             return command["immediate"]
         return False
+
+    def scan_for_uplink_responses(self):
+        """ Scans the RX buffer for responses to uplink commands and handles any. """
+        latest_end = 0
+        for cmd, res in config.UPLINK_RESPONSES.iteritems():
+            ind = self.rx_buf.find(hexlify(res), self.rx_buf_uplink_search_start)
+            if ind != -1:
+                logging.info("FOUND UPLINK COMMAND RESPONSE for %s (%s @ index %d/%d)!" % (cmd, res, ind, len(self.rx_buf)))
+                # keep track of the end of the latest uplink command
+                if ind > latest_end:
+                    latest_end = ind + len(res)
+
+        # increment search start if we found an uplink command in this pass
+        if latest_end > self.rx_buf_uplink_search_start:
+            self.rx_buf_uplink_search_start = latest_end
 
     def correct_for_doppler(self):
         """ Shifts the receive and transmit frequency of the XDL micro to compensate
@@ -448,11 +467,16 @@ class EQUiStation:
             # make sure to trim the buffer to the end of the last received packet,
             # so we don't read them again
             lastindex = indexes[len(indexes) - 1]
-            self.rx_buf = self.rx_buf[lastindex+self.PACKET_STR_LEN:]
+            trimpoint = lastindex+self.PACKET_STR_LEN
+            self.rx_buf = self.rx_buf[trimpoint:]
+            # shift back the uplink search start to be relevant in the new buffer
+            self.rx_buf_uplink_search_start = max(0, self.rx_buf_uplink_search_start - trimpoint)
 
         # regardless of whether we got a packet, if the buffer exceeds a max size trim it as well,
         # making sure to leave at least a packet's worth of characters in case one is currently coming in
-        self.rx_buf, _ = EQUiStation.trim_buffer(self.rx_buf, self.MAX_BUF_SIZE, self.PACKET_STR_LEN)
+        self.rx_buf, trimmed = EQUiStation.trim_buffer(self.rx_buf, self.MAX_BUF_SIZE, self.PACKET_STR_LEN)
+        # shift back uplink search start
+        self.rx_buf_uplink_search_start = max(0, self.rx_buf_uplink_search_start - len(trimmed))
         return len(packets) > 0
 
     def publish_received_packets(self):
