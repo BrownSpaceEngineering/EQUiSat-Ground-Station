@@ -208,14 +208,21 @@ class SatTracker:
 
         return factors_dict
 
-    def get_doppler_factors(self, pass_data, time_step_s):
+    def get_doppler_factors(self, pass_data, time_step_s, real_time=True):
         """ Returns a list of {'time', 'factor'} dicts giving the doppler factor at each time.
         Sorted in increasing time order.
          :param time_step_s: the time step to use to generate the list. """
         obs = self.get_observer()
         tle = self.tle.copy() # copy to not modify
         factors = []
-        cur_time = pass_data["rise_time"]
+        # if we're doing this as the pass is happening,
+        # correct for a library bug that bumps rise_time to the next
+        # pass' rise time if you call the function after the pass starts
+        if real_time and pass_data["rise_time"] >= pass_data["set_time"]:
+            cur_time = datetime.datetime.utcnow()
+        else:
+            cur_time = pass_data["rise_time"]
+
         while utils.dtime_after(pass_data["set_time"], cur_time):
             factors.append({
                 "time": cur_time,

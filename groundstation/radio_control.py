@@ -235,6 +235,52 @@ def _processRSSI(rets):
     else:
         return False, rets[1], None
 
+def getCurrentPower(ser, retries=DEFAULT_RETRIES):
+    command = buildCommand(b'\x72')
+    success, rx_buf, response = sendConfigCommand(ser, command, b'\xf2', response_size=1, retries=retries)
+    if success:
+        return True, rx_buf, controlByteToPower(response)
+    else:
+        return False, rx_buf, None
+
+def setCurrentPower(ser, power_w, retries=DEFAULT_RETRIES):
+    ctrl = powerToControlByte(power_w)
+    if ctrl is None:
+        return False, "", None
+    command = buildCommand(b'\x71', args=ctrl)
+    rets = sendConfigCommand(ser, command, b'\xf1', retries=retries)
+    return validateConfigResponse(b'\x00', rets)
+
+def getPowerLimit(ser, retries=DEFAULT_RETRIES):
+    command = buildCommand(b'\x70\x03')
+    success, rx_buf, response = sendConfigCommand(ser, command, b'\xf0', response_size=1, retries=retries)
+    if success:
+        return True, rx_buf, controlByteToPower(response)
+    else:
+        return False, rx_buf, None
+
+def setPowerLimit(ser, power_w, retries=DEFAULT_RETRIES):
+    ctrl = powerToControlByte(power_w)
+    if ctrl is None:
+        return False, "", None
+    command = buildCommand(b'\x70\x02', args=ctrl)
+    rets = sendConfigCommand(ser, command, b'\xf0', retries=retries)
+    return validateConfigResponse(b'\x00', rets)
+
+def powerToControlByte(power):
+    if power == 0.1:     return b'\x00'
+    elif power == 0.5:   return b'\x01'
+    elif power == 1.0:   return b'\x02'
+    elif power == 2.0:   return b'\x03'
+    else: return None # nothing else supported on XDL
+
+def controlByteToPower(ctrl):
+    if ctrl == b'\x00':     return 0.1
+    elif ctrl == b'\x01':   return 0.5
+    elif ctrl == b'\x02':   return 1.0
+    elif ctrl == b'\x03':   return 2.0
+    else: return None # nothing else supported on XDL
+
 def configRadio(ser):
     enterCommandMode(ser, dealer=True)
     logging.info("Setting Channel")

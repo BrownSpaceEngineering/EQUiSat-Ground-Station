@@ -60,6 +60,7 @@ class EQUiStation:
         self.rx_since_pass_start = 0
         self.received_packets = []
         self.tx_cmd_queue = []
+        self.rx_buf_uplink_search_start = 0 # where to start searching for uplinks in buffer; used to avoid double-triggers
 
         # doppler shift/tracking
         self.station_lat = station.station_lat
@@ -190,7 +191,7 @@ class EQUiStation:
                 # if we got a packet try and send any TX commands,
                 send_tx = got_data or self.sending_periodic_tx_cmd()
                 if send_tx:
-                    self.transmit(throttle=not got_data)
+                    self.transmit(throttle=not got_data, post_rx=got_data)
                     # look for (and extract/send) any packets in the buffer, trimming
                     # the buffer after finding any. (Only finds full packets)
                     # We do this here because we want to send TX commands ASAP after packet RX
@@ -198,6 +199,9 @@ class EQUiStation:
 
                 # and then try to adjust the frequency for doppler effects
                 self.correct_for_doppler()
+
+                # scan buffer for any residual uplinks command responses or those from other stations
+                self.scan_for_uplink_responses()
 
                 # periodically perform random scans for packets in case we missed something
                 # (only if we're not transmitting now as it would have been done)
@@ -212,7 +216,7 @@ class EQUiStation:
                 # sleep to slow looping, but make it faster if we're sending TX commands so they can send faster
                 # after we get a packet (we most likely get the packet during this sleep and grab it later)
                 if len(self.tx_cmd_queue) > 0:
-                    time.sleep(0.05)
+                    time.sleep(0.025)
                 else:
                     time.sleep(0.5)
 
@@ -237,7 +241,7 @@ class EQUiStation:
             return True
         return False
 
-    def transmit(self, throttle=True):
+    def transmit(self, throttle=True, post_rx=False, was_low_power=False):
         """ Checks if there are any uplink commands on the queue and transmits
             them/waits for response if so.
             Returns whether anything was transmitted and whether it was successful. """
@@ -254,7 +258,19 @@ class EQUiStation:
             if should_send:
                 logging.info("SENDING UPLINK COMMAND: %s" % command)
 
-                got_response, rx = self.transmitter.send(command["cmd"])
+                low_power = False # default
+                if post_rx:
+                    mode = command["post_rx_mode"]
+                    if mode == "auto":
+                        low_power = False # TODO: for now the idle mode covers both, but could detect and do fancy timing
+                    elif mode == "low_power":
+                        low_power = True
+                    elif mode == "idle":
+                        low_power = False
+                    else:
+                        logging.error("uplink: invalid post_rx_mode '%s' setting" % mode)
+
+                got_response, rx = self.transmitter.send(command["cmd"], post_packet=post_rx, low_power=low_power)
                 self.update_rx_buf(hexlify(rx))
                 self.rx_since_pass_start += len(rx)
                 self.last_uplink_time = datetime.datetime.utcnow()
@@ -268,7 +284,7 @@ class EQUiStation:
                         logging.info("sending email")
                         logging.debug("sending email message with uplink response")
                         contents = "Sent command: %s\nRaw Uplink Response: %s\nHex Uplink Response: %s" \
-                            % (command["cmd"], rx, hexlify(rx))
+                                   % (command["cmd"], rx, hexlify(rx))
                         self.yag.send(to=station.uplink_email_recipients,
                                       subject="EQUiSat Station '%s' Uplinked Successfully!" % station.station_name,
                                       contents=contents)
@@ -292,6 +308,21 @@ class EQUiStation:
             command = self.tx_cmd_queue[0]
             return command["immediate"]
         return False
+
+    def scan_for_uplink_responses(self):
+        """ Scans the RX buffer for responses to uplink commands and handles any. """
+        latest_end = 0
+        for cmd, res in config.UPLINK_RESPONSES.iteritems():
+            ind = self.rx_buf.find(hexlify(res), self.rx_buf_uplink_search_start)
+            if ind != -1:
+                logging.info("FOUND UPLINK COMMAND RESPONSE for %s (%s @ index %d/%d)!" % (cmd, res, ind, len(self.rx_buf)))
+                # keep track of the end of the latest uplink command
+                if ind > latest_end:
+                    latest_end = ind + len(res)
+
+        # increment search start if we found an uplink command in this pass
+        if latest_end > self.rx_buf_uplink_search_start:
+            self.rx_buf_uplink_search_start = latest_end
 
     def correct_for_doppler(self):
         """ Shifts the receive and transmit frequency of the XDL micro to compensate
@@ -436,11 +467,16 @@ class EQUiStation:
             # make sure to trim the buffer to the end of the last received packet,
             # so we don't read them again
             lastindex = indexes[len(indexes) - 1]
-            self.rx_buf = self.rx_buf[lastindex+self.PACKET_STR_LEN:]
+            trimpoint = lastindex+self.PACKET_STR_LEN
+            self.rx_buf = self.rx_buf[trimpoint:]
+            # shift back the uplink search start to be relevant in the new buffer
+            self.rx_buf_uplink_search_start = max(0, self.rx_buf_uplink_search_start - trimpoint)
 
         # regardless of whether we got a packet, if the buffer exceeds a max size trim it as well,
         # making sure to leave at least a packet's worth of characters in case one is currently coming in
-        self.rx_buf, _ = EQUiStation.trim_buffer(self.rx_buf, self.MAX_BUF_SIZE, self.PACKET_STR_LEN)
+        self.rx_buf, trimmed = EQUiStation.trim_buffer(self.rx_buf, self.MAX_BUF_SIZE, self.PACKET_STR_LEN)
+        # shift back uplink search start
+        self.rx_buf_uplink_search_start = max(0, self.rx_buf_uplink_search_start - len(trimmed))
         return len(packets) > 0
 
     def publish_received_packets(self):
@@ -639,8 +675,9 @@ class EQUiStation:
             freq_in = self.RADIO_BASE_FREQ_HZ + shift
             freq_out = self.RADIO_BASE_FREQ_HZ - shift
             logging.info("setting channels %d -> %d to %f -> %f" % (channel, channel+1, freq_in/1e6, freq_out/1e6))
-            in_okay, rx1 = radio_control.addChannel(self.ser, channel, freq_in, freq_in)
-            out_okay, rx2 = radio_control.addChannel(self.ser, channel+1, freq_out, freq_out)
+            # tx frequency has the opposite doppler shift of rx frequency because of relativity (we're going towards the sat)
+            in_okay, rx1 = radio_control.addChannel(self.ser, channel, freq_in, freq_out)
+            out_okay, rx2 = radio_control.addChannel(self.ser, channel+1, freq_out, freq_in)
             # update
             channel += 2
             mid_channels_okay = mid_channels_okay and in_okay and out_okay
@@ -869,15 +906,22 @@ class EQUiStation:
     def get_tx_cmd_queue(self):
         return self.tx_cmd_queue
 
-    def send_tx_cmd(self, cmd_name, immediate=False, immediate_period_s=3):
+    def send_tx_cmd(self, cmd_name, immediate=False, immediate_period_s=3, post_rx_mode="auto"):
         """ Queues the given transmit command (name) to
         be transmitted when best, or sets it to transmit immediately and
         continually if immediate is set.
         Returns whether the uplink cmd was valid. """
         if not self.transmitter.is_valid(cmd_name):
             return False
+        if post_rx_mode not in ["auto", "low_power", "idle"]:
+            return False
 
-        cmd = {"cmd": cmd_name, "immediate": immediate}
+        cmd = {
+            "cmd": cmd_name,
+            "immediate": immediate,
+            "post_rx_mode": post_rx_mode
+        }
+
         if immediate:
             cmd["period"] = immediate_period_s
         self.tx_cmd_queue.insert(0, cmd)
