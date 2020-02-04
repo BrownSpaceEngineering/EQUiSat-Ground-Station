@@ -9,7 +9,6 @@ import requests
 from collections import OrderedDict
 
 import station_config as station
-import groundstation
 import utils
 
 DEFAULT_TLE_FNAME = "tle.txt"
@@ -368,6 +367,7 @@ class SatTracker:
 
 if __name__ == "__main__":
     import config
+    import groundstation
     st = SatTracker(config.SAT_CATALOG_NUMBER)
     print(st.get_az_el())
     # st.update_tle()

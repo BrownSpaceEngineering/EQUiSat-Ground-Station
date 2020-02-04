@@ -1,8 +1,8 @@
-from station import Groundstation
+from common.station import Groundstation
 import time
 
 class HAMLibRotator(Groundstation):
-    def __init__(self, norad_id, longitude, latitude, altitude, tle_fname=super.DEFAULT_TLE_FNAME, tle_route=super.DEFAULT_TLE_ROUTE):
+    def __init__(self, norad_id, longitude, latitude, altitude, tle_fname=Groundstation.DEFAULT_TLE_FNAME, tle_route=Groundstation.DEFAULT_TLE_ROUTE):
         super(HAMLibRotator, self).__init__(norad_id, longitude, latitude, altitude, tle_fname, tle_route)
 
     def on_pass(self, stats):
